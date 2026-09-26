@@ -13,6 +13,7 @@ import {
   useScheduledPostsStats,
   useDeleteScheduledPost,
   useClearScheduledPostsHistory,
+  useRetryScheduledPost,
   getTimeRemaining,
 } from '@/hooks/useScheduledPosts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,6 +43,7 @@ import {
   Edit2,
   AlertCircle,
   Repeat,
+  RotateCcw,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -53,14 +55,18 @@ import {
   getScheduledPostImage,
 } from '@/lib/scheduledPostPreview';
 import { CalendarGrid, type CalendarItem } from '@/components/admin/CalendarGrid';
+import { SchedulePicker, type ScheduleConfig } from '@/components/admin/SchedulePicker';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 interface ScheduledPostCardProps {
   post: ScheduledPost;
   onDelete: (id: string) => void;
   onEdit: (post: ScheduledPost) => void;
+  onRetry: (post: ScheduledPost) => void;
 }
 
-function ScheduledPostCard({ post, onDelete, onEdit }: ScheduledPostCardProps) {
+function ScheduledPostCard({ post, onDelete, onEdit, onRetry }: ScheduledPostCardProps) {
   const timeRemaining = getTimeRemaining(post.scheduled_for);
   const isNote = post.kind === 1;
   const isBlog = post.kind === 30023;
@@ -72,12 +78,18 @@ function ScheduledPostCard({ post, onDelete, onEdit }: ScheduledPostCardProps) {
   const repeatInterval = post.signed_event.tags?.find(([t]) => t === 'repeat_interval')?.[1];
   const hasRepeat = repeatTotal && repeatIndex && repeatInterval && Number(repeatTotal) > 1;
 
-  // Compute the end date of the series: this post's date + remaining posts × interval
+  // "ends" means the latest scheduled publication in the series. Derive the
+  // original series end from the signed event's created_at (immutable — a
+  // retry changes scheduled_for but not the signed event), then clamp to
+  // this entry's scheduled_for: an entry retried past the original end is
+  // itself the last publication, so "ends" should show its new date.
   let repeatEndDate: Date | null = null;
   if (hasRepeat) {
     const remaining = Number(repeatTotal) - Number(repeatIndex) - 1;
+    const originalEnd =
+      post.signed_event.created_at * 1000 + remaining * Number(repeatInterval) * 1000;
     repeatEndDate = new Date(
-      new Date(post.scheduled_for).getTime() + remaining * Number(repeatInterval) * 1000,
+      Math.max(originalEnd, new Date(post.scheduled_for).getTime()),
     );
   }
 
@@ -193,6 +205,28 @@ function ScheduledPostCard({ post, onDelete, onEdit }: ScheduledPostCardProps) {
                 </Button>
               </>
             )}
+            {post.status === 'failed' && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-primary hover:text-primary"
+                  onClick={() => onRetry(post)}
+                  title="Retry failed post"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:text-destructive"
+                  onClick={() => onDelete(post.id)}
+                  title="Delete failed post"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </CardContent>
@@ -279,6 +313,7 @@ interface ScheduledPostPreviewDialogProps {
   onOpenChange: (open: boolean) => void;
   onDelete: (id: string) => void;
   onEdit: (post: ScheduledPost) => void;
+  onRetry: (post: ScheduledPost) => void;
 }
 
 function ScheduledPostPreviewDialog({
@@ -287,6 +322,7 @@ function ScheduledPostPreviewDialog({
   onOpenChange,
   onDelete,
   onEdit,
+  onRetry,
 }: ScheduledPostPreviewDialogProps) {
   if (!post) return null;
 
@@ -379,6 +415,19 @@ function ScheduledPostPreviewDialog({
           {contentNode}
         </div>
         <DialogFooter className="flex flex-row justify-end gap-2 mt-4">
+          {post.status === 'failed' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onRetry(post);
+                onOpenChange(false);
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          )}
           {isEditable && (
             <Button
               variant="outline"
@@ -402,6 +451,94 @@ function ScheduledPostPreviewDialog({
           >
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface RetryScheduledPostDialogProps {
+  post: ScheduledPost | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRetry: (post: ScheduledPost, scheduledFor: Date, freshCopy: boolean) => void;
+  isPending?: boolean;
+}
+
+function RetryScheduledPostDialog({
+  post,
+  open,
+  onOpenChange,
+  onRetry,
+  isPending = false,
+}: RetryScheduledPostDialogProps) {
+  // The parent remounts this dialog via `key` on every open, so this state is
+  // always fresh — there is no stale SchedulePicker input or open-time
+  // scheduledFor left over from a previous retry session.
+  const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({
+    enabled: true,
+    scheduledFor: new Date(),
+  });
+  const [preserveSignature, setPreserveSignature] = useState(true);
+  const signerAvailable =
+    typeof window !== 'undefined' &&
+    typeof (window as Window & { nostr?: { signEvent?: unknown } }).nostr?.signEvent === 'function';
+
+  if (!post) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <RotateCcw className="h-4 w-4" />
+            Retry Failed Post
+          </DialogTitle>
+          <DialogDescription>
+            Choose when to retry this failed post.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <SchedulePicker value={scheduleConfig} onChange={setScheduleConfig} />
+
+          <div className="flex items-start gap-2">
+            <Switch
+              id="preserve-signature"
+              checked={preserveSignature || !signerAvailable}
+              onCheckedChange={setPreserveSignature}
+              disabled={!signerAvailable}
+            />
+            <Label htmlFor="preserve-signature" className="text-xs leading-snug cursor-pointer">
+              Keep original signature — publishes the signed event unchanged. The post keeps
+              its original timestamp, so it lands at its original position in feeds. Turn off
+              to sign a fresh copy stamped with the retry time (requires your signer).
+            </Label>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="default"
+            onClick={() => {
+              // A non-future value means "post now" — send the click time,
+              // not the dialog-open time held in scheduleConfig.
+              const t = scheduleConfig.scheduledFor;
+              onRetry(post, t && t.getTime() > Date.now() ? t : new Date(), !preserveSignature);
+              onOpenChange(false);
+            }}
+            disabled={isPending}
+          >
+            {isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4 mr-2" />
+            )}
+            Retry
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -459,11 +596,16 @@ export default function AdminScheduledPage() {
   const { data: scheduledPosts, isLoading } = useScheduledPosts(user?.pubkey);
   const { data: stats } = useScheduledPostsStats(user?.pubkey);
   const { mutateAsync: deletePost } = useDeleteScheduledPost();
+  const { mutateAsync: retryPost, isPending: isRetryingPost } = useRetryScheduledPost();
   const { mutateAsync: clearHistory, isPending: isClearingHistory } = useClearScheduledPostsHistory();
   const [activeTab, setActiveTab] = useState<'pending' | 'published' | 'failed' | 'calendar'>('pending');
   const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week'>('month');
   const [previewPost, setPreviewPost] = useState<ScheduledPost | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [retryPostState, setRetryPost] = useState<ScheduledPost | null>(null);
+  const [retryOpen, setRetryOpen] = useState(false);
+  // Remounts the retry dialog per open so its SchedulePicker starts clean.
+  const [retrySeq, setRetrySeq] = useState(0);
   const [dayDialogDate, setDayDialogDate] = useState<Date | null>(null);
   const [dayDialogItems, setDayDialogItems] = useState<ScheduledPostCalendarItemData[]>([]);
   const [dayDialogOpen, setDayDialogOpen] = useState(false);
@@ -521,6 +663,45 @@ export default function AdminScheduledPage() {
   const handleCalendarItemClick = (item: ScheduledPostCalendarItemData) => {
     setPreviewPost(item.post);
     setPreviewOpen(true);
+  };
+
+  const handleRetryClick = (post: ScheduledPost) => {
+    setRetryPost(post);
+    setRetrySeq((n) => n + 1);
+    setRetryOpen(true);
+  };
+
+  const handleRetry = async (post: ScheduledPost, scheduledFor: Date, freshCopy: boolean) => {
+    if (!user?.pubkey) return;
+
+    try {
+      const result = await retryPost({ post, scheduledFor, freshCopy });
+      if (result.cleanupFailed) {
+        // The fresh copy was scheduled but the failed original could not be
+        // removed — warn so the user deletes it instead of retrying again
+        // into a duplicate.
+        toast({
+          title: 'Scheduled — cleanup needed',
+          description:
+            'The fresh copy was scheduled, but the failed original could not be removed. Delete the failed entry to avoid a duplicate.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      toast({
+        title: 'Retry scheduled',
+        description: scheduledFor <= new Date()
+          ? 'The post will be published on the next scheduler tick.'
+          : `The post has been rescheduled for ${format(scheduledFor, 'MMM d, yyyy · h:mm a')}.`,
+      });
+    } catch (error) {
+      console.error('Failed to retry scheduled post:', error);
+      toast({
+        title: 'Error',
+        description: (error as Error).message || 'Failed to retry scheduled post.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleShowMore = (date: Date, items: ScheduledPostCalendarItemData[]) => {
@@ -714,7 +895,7 @@ export default function AdminScheduledPage() {
             </Card>
           ) : filteredPosts.length > 0 ? (
             filteredPosts.map((post) => (
-              <ScheduledPostCard key={post.id} post={post} onDelete={handleDelete} onEdit={handleEdit} />
+              <ScheduledPostCard key={post.id} post={post} onDelete={handleDelete} onEdit={handleEdit} onRetry={handleRetryClick} />
             ))
           ) : (
             <Card>
@@ -754,7 +935,7 @@ export default function AdminScheduledPage() {
             </Card>
           ) : filteredPosts.length > 0 ? (
             filteredPosts.map((post) => (
-              <ScheduledPostCard key={post.id} post={post} onDelete={handleDelete} onEdit={handleEdit} />
+              <ScheduledPostCard key={post.id} post={post} onDelete={handleDelete} onEdit={handleEdit} onRetry={handleRetryClick} />
             ))
           ) : (
             <Card>
@@ -791,7 +972,7 @@ export default function AdminScheduledPage() {
             </Card>
           ) : filteredPosts.length > 0 ? (
             filteredPosts.map((post) => (
-              <ScheduledPostCard key={post.id} post={post} onDelete={handleDelete} onEdit={handleEdit} />
+              <ScheduledPostCard key={post.id} post={post} onDelete={handleDelete} onEdit={handleEdit} onRetry={handleRetryClick} />
             ))
           ) : (
             <Card>
@@ -843,6 +1024,16 @@ export default function AdminScheduledPage() {
         onOpenChange={setPreviewOpen}
         onDelete={handleDelete}
         onEdit={handleEdit}
+        onRetry={handleRetryClick}
+      />
+
+      <RetryScheduledPostDialog
+        key={retrySeq}
+        post={retryPostState}
+        open={retryOpen}
+        onOpenChange={setRetryOpen}
+        onRetry={handleRetry}
+        isPending={isRetryingPost}
       />
 
       <ScheduledPostsDayDialog

@@ -240,6 +240,85 @@ export function useDeleteScheduledPost() {
 }
 
 /**
+ * Result of a retry. `cleanupFailed` is set when a fresh copy was scheduled
+ * but deleting the failed original errored — the caller should surface this
+ * so the user removes the original instead of retrying into a duplicate.
+ */
+export interface RetryScheduledPostResult {
+  post: ScheduledPost;
+  cleanupFailed?: boolean;
+}
+
+/**
+ * Retry a failed scheduled post. Two modes:
+ * - Preserve (default): POST /scheduler/retry keeps the signed event —
+ *   including its original created_at, so it publishes at its original
+ *   position in timestamp-sorted feeds.
+ * - Fresh copy: re-signs a clone with created_at set to the retry schedule
+ *   (and refreshes any `published_at` tag), schedules it via the existing
+ *   POST /scheduler/schedule, and deletes the failed original. Requires the
+ *   NIP-07 signer at retry time; the new event lands at the retry position.
+ *   The clone strips `repeat_*` tags — a retried entry no longer occupies
+ *   its original slot in the series timeline, so it must not claim one.
+ *
+ * If the delete fails after the schedule succeeds, the result carries
+ * `cleanupFailed` instead of throwing — the new post exists and must be
+ * shown, and the failed original needs manual removal.
+ */
+export function useRetryScheduledPost() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      post,
+      scheduledFor,
+      freshCopy,
+    }: {
+      post: ScheduledPost;
+      scheduledFor: Date;
+      freshCopy?: boolean;
+    }): Promise<RetryScheduledPostResult> => {
+      if (!freshCopy) {
+        const result = await fetchWithNip98(`/scheduler/retry?id=${post.id}`, 'POST', {
+          scheduled_for: scheduledFor.toISOString(),
+        });
+        return { post: result as ScheduledPost };
+      }
+
+      const nostr = (window as Window & { nostr?: NostrSigner }).nostr;
+      if (!nostr) {
+        throw new Error('Nostr extension not found');
+      }
+      const createdAt = Math.floor(scheduledFor.getTime() / 1000);
+      const { id: _id, sig: _sig, ...unsigned } = post.signed_event;
+      unsigned.created_at = createdAt;
+      unsigned.tags = unsigned.tags
+        .filter((t) => !t[0].startsWith('repeat_'))
+        .map((t) => (t[0] === 'published_at' ? ['published_at', String(createdAt)] : t));
+      const signedEvent = await nostr.signEvent(unsigned);
+
+      const created = await schedulePostViaApi({
+        signedEvent,
+        relays: post.relays,
+        scheduledFor,
+      });
+      // The failed original is superseded by the fresh copy. A delete failure
+      // is a partial success, not an error — the new scheduled post exists.
+      try {
+        await fetchWithNip98(`/scheduler/delete?id=${post.id}`, 'DELETE');
+      } catch {
+        return { post: created, cleanupFailed: true };
+      }
+      return { post: created };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts-stats'] });
+    },
+  });
+}
+
+/**
  * Clear scheduled post history for a specific status (published or failed)
  */
 export function useClearScheduledPostsHistory() {
