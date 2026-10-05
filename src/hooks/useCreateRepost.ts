@@ -135,6 +135,7 @@ export function useCreateRepost() {
             signedEvent,
             relays: publishRelays,
             scheduledFor: scheduledDate,
+            user,
           });
           if (result?.id) {
             scheduledPostIds.push(result.id);
