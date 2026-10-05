@@ -3,12 +3,50 @@ updates:
   # npm — canonical manager (build/test scripts use `npm i`)
   - package-ecosystem: "npm"
     directory: "/"
+    # Routine version updates: monthly, grouped. Security updates are
+    # event-driven by GitHub and bypass this schedule entirely — CVE
+    # patches still open PRs the day they publish.
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
     labels:
       - "dependencies"
+    groups:
+      # One PR for all radix-ui patches/minors — these are shadcn wrappers
+      # and generate the most noise (27 packages).
+      radix-ui:
+        applies-to: "version-updates"
+        patterns:
+          - "@radix-ui/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Dev tooling batch — test/build lint stack moves together.
+      dev-dependencies:
+        applies-to: "version-updates"
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+      # All remaining production minors/patches in one PR.
+      runtime-deps:
+        applies-to: "version-updates"
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+    # Deferred majors — each requires real code migration (verified: these
+    # break the build). Tracked as issues; security advisories for the
+    # pinned majors still surface via the security-update channel.
+    ignore:
+      - dependency-name: "zod"
+        versions: [">=4.0.0"]
+      - dependency-name: "recharts"
+        versions: [">=3.0.0"]
+      - dependency-name: "@getalby/sdk"
+        versions: [">=8.0.0"]
+      - dependency-name: "@nostrify/react"
+        versions: [">=0.6.0"]
