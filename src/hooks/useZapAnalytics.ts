@@ -4,7 +4,7 @@ import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import type { NostrEvent } from '@nostrify/nostrify';
-import { queryWithNip65Fanout, getNip65ReadRelays } from '@/lib/queryRelays';
+import { queryWithNip65FanoutDetailed, getNip65ReadRelays } from '@/lib/queryRelays';
 import type {
   ZapReceipt,
   ParsedZap,
@@ -105,13 +105,48 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const isLoadingRef = useRef(false);
-  const autoLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Owner-tagged auto-load timeout. Effect cleanups may only clear timeouts
+  // they scheduled themselves — a cleanup that clears a timeout scheduled by
+  // loadMoreZaps' continuation would silently stall pagination.
+  const autoLoadTimeoutRef = useRef<{ owner: string; handle: NodeJS.Timeout } | null>(null);
+  // Oldest event timestamp ever returned by the primary (default) relay.
+  // Drives the pagination cursor so supplemental relays can't move it.
+  const primaryOldestRef = useRef<number | null>(null);
+  // Consecutive zero-new pages where the primary relay actually answered.
+  // Only these count toward 'all'-time completion.
+  const answeredZeroStreakRef = useRef(0);
+  const loadMoreZapsRef = useRef<((isAutomatic?: boolean) => Promise<void>) | null>(null);
   const stateRef = useRef(state);
 
   // Keep state ref updated
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Schedule an auto-load call under an owner tag. Replaces any pending
+  // timeout (all owners schedule the same function, so last-write wins).
+  const scheduleAutoLoad = useCallback((owner: string, delay: number) => {
+    if (autoLoadTimeoutRef.current) {
+      clearTimeout(autoLoadTimeoutRef.current.handle);
+    }
+    autoLoadTimeoutRef.current = {
+      owner,
+      handle: setTimeout(() => {
+        autoLoadTimeoutRef.current = null;
+        loadMoreZapsRef.current?.(true).catch((error) => {
+          console.error('Auto-load failed:', error);
+        });
+      }, delay),
+    };
+  }, []);
+
+  // Clear a pending auto-load timeout only if the given owner scheduled it.
+  const clearOwnedAutoLoad = useCallback((owner: string) => {
+    if (autoLoadTimeoutRef.current?.owner === owner) {
+      clearTimeout(autoLoadTimeoutRef.current.handle);
+      autoLoadTimeoutRef.current = null;
+    }
+  }, []);
 
   // Initialize from cache and filter by time range
   useEffect(() => {
@@ -164,9 +199,12 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
   useEffect(() => {
     abortControllerRef.current?.abort();
     if (autoLoadTimeoutRef.current) {
-      clearTimeout(autoLoadTimeoutRef.current);
+      clearTimeout(autoLoadTimeoutRef.current.handle);
+      autoLoadTimeoutRef.current = null;
     }
     isLoadingRef.current = false;
+    primaryOldestRef.current = null;
+    answeredZeroStreakRef.current = 0;
 
     // Only reset when user changes, not time range
     setState({
@@ -189,7 +227,10 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
     // Get the current state fresh to avoid closure issues
     const currentState = stateRef.current;
 
-    if (!pubkey || isLoadingRef.current || currentState.isComplete) {
+    // answeredZeroStreakRef is checked alongside isComplete because state
+    // updates may not have flushed yet when a scheduled batch fires.
+    if (!pubkey || isLoadingRef.current || currentState.isComplete ||
+      (timeRange === 'all' && answeredZeroStreakRef.current >= 3)) {
       return;
     }
 
@@ -213,12 +254,19 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
     try {
       const { since, until } = getDateRange(timeRange, customRange);
 
-      // Calculate the correct until timestamp for pagination
+      // Calculate the correct until timestamp for pagination.
+      // The cursor is driven by the primary (default) relay's oldest event.
+      // Supplemental relays may contribute events older than the primary's
+      // frontier — letting those move the cursor would jump the window back
+      // past unfetched primary events and leave a permanent gap.
+      // Falls back to the merged-cache minimum when the primary has never
+      // returned anything (e.g. viewing a non-member's zaps).
       let currentUntil = until;
-      if (currentState.allReceiptsCache.length > 0) {
-        // Get the oldest timestamp from cached receipts and subtract 1 second for pagination
-        const oldestTimestamp = Math.min(...currentState.allReceiptsCache.map(r => r.created_at));
-        const paginationUntil = oldestTimestamp - 1;
+      const cursorBase = primaryOldestRef.current ?? (currentState.allReceiptsCache.length > 0
+        ? Math.min(...currentState.allReceiptsCache.map(r => r.created_at))
+        : null);
+      if (cursorBase !== null) {
+        const paginationUntil = cursorBase - 1;
 
         // For custom ranges, respect the custom range's until boundary
         if (timeRange === 'custom' && until) {
@@ -266,10 +314,19 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       ]);
 
       // Fan out to NIP-65 relays since zap receipts may live on multiple relays
-      const events = await queryWithNip65Fanout(nostr, [filter], nip65ReadRelays, batchSignal);
+      const { events, sources } = await queryWithNip65FanoutDetailed(nostr, [filter], nip65ReadRelays, batchSignal);
+      const primaryResult = sources[0];
+      const primaryFulfilled = primaryResult?.status === 'fulfilled';
+
+      // Drop events that violate the until cursor — a relay that ignores
+      // 'until' returns its newest events, which are all already cached
+      // duplicates and would falsely signal end-of-data.
+      const inWindow = currentUntil
+        ? events.filter(e => e.created_at <= currentUntil)
+        : events;
 
       // Filter and validate zap receipts
-      const validReceipts = events.filter((event): event is ZapReceipt =>
+      const validReceipts = inWindow.filter((event): event is ZapReceipt =>
         isValidZapReceipt(event as NostrEvent)
       ).sort((a, b) => b.created_at - a.created_at);
 
@@ -279,6 +336,31 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       // pagination loops where the relay keeps returning the same cached receipts.
       const currentCacheIds = new Set(currentState.allReceiptsCache.map(r => r.id));
       const newUnique = validReceipts.filter(r => !currentCacheIds.has(r.id));
+
+      // Track the primary relay's oldest event — this drives the next
+      // batch's until cursor. Only events within the window count, so an
+      // until-violating primary can't corrupt its own cursor.
+      if (primaryFulfilled && primaryResult.events.length > 0) {
+        const primaryInWindow = currentUntil
+          ? primaryResult.events.filter(e => e.created_at <= currentUntil)
+          : primaryResult.events;
+        if (primaryInWindow.length > 0) {
+          const oldest = Math.min(...primaryInWindow.map(e => e.created_at));
+          primaryOldestRef.current = primaryOldestRef.current === null
+            ? oldest
+            : Math.min(primaryOldestRef.current, oldest);
+        }
+      }
+
+      // 'all'-time completion streak: only zero-new pages where the primary
+      // relay actually answered count. Pages where the primary timed out are
+      // inconclusive — auto-loading continues until the no-progress gate
+      // (consecutiveZeroResults) stops it, leaving a manual retry available.
+      if (newUnique.length > 0) {
+        answeredZeroStreakRef.current = 0;
+      } else if (timeRange === 'all' && primaryFulfilled) {
+        answeredZeroStreakRef.current += 1;
+      }
 
       // Update state synchronously
       setState(prev => {
@@ -323,15 +405,13 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
         let isComplete = false;
 
         if (prevNewUnique.length === 0) {
-          // No new unique results. Two cases:
-          // 1. Relay returned events but all were already cached → end of data
-          // 2. Relay returned 0 events (timeout/abort) → NOT end of data
-          // For 'all' time, only mark complete if the relay actually returned
-          // events (all duplicates). If it returned nothing, it might be a
-          // timeout, so keep loading to retry.
-          if (timeRange === 'all' && validReceipts.length === 0) {
-            // Likely a timeout — don't mark complete, retry
-            isComplete = false;
+          // No new unique results.
+          // For 'all' time, only mark complete after the primary relay has
+          // answered with nothing new over multiple consecutive pages — a
+          // single page of duplicates (e.g. a relay ignoring 'until', or an
+          // unlucky timeout window) is not proof of end-of-data.
+          if (timeRange === 'all') {
+            isComplete = answeredZeroStreakRef.current >= 3;
           } else {
             isComplete = true;
           }
@@ -385,12 +465,7 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
           (timeRange === 'all' && validReceipts.length === 0 && !stateRef.current.isComplete);
 
         if (shouldContinueAutoLoad) {
-          autoLoadTimeoutRef.current = setTimeout(() => {
-            if (isLoadingRef.current) return;
-            loadMoreZaps(true).catch((error) => {
-              console.error('Auto-load failed:', error);
-            });
-          }, ZAP_FETCH_CONFIG.BATCH_DELAY_MS);
+          scheduleAutoLoad('auto', ZAP_FETCH_CONFIG.BATCH_DELAY_MS);
         } else {
           // Ensure isLoadingRef is set to false when auto-loading stops
           isLoadingRef.current = false;
@@ -411,7 +486,10 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       // Always ensure loading state is cleared
       isLoadingRef.current = false;
     }
-  }, [nostr, pubkey, timeRange, customRange, nip65ReadRelays]);
+  }, [nostr, pubkey, timeRange, customRange, nip65ReadRelays, scheduleAutoLoad]);
+
+  // Keep the ref current so owned timeouts always call the latest closure
+  loadMoreZapsRef.current = loadMoreZaps;
 
   // Auto-start loading when switching to a time range that needs more data
   useEffect(() => {
@@ -472,21 +550,15 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
           });
         }, 100);
       } else {
-        autoLoadTimeoutRef.current = setTimeout(() => {
-          try {
-            loadMoreZaps(true);
-          } catch (error) {
-            console.error('Error in auto-load timeout:', error);
-          }
-        }, ZAP_FETCH_CONFIG.AUTO_LOAD_DELAY_MS);
+        scheduleAutoLoad('effect-start', ZAP_FETCH_CONFIG.AUTO_LOAD_DELAY_MS);
       }
     }
 
-    // Cleanup timeout only if we're not setting a new one in this run
+    // Cleanup only timeouts this effect scheduled — never the auto-load
+    // continuation scheduled by loadMoreZaps itself.
     return () => {
-      if (autoLoadTimeoutRef.current && !isCustomRange) {
-        clearTimeout(autoLoadTimeoutRef.current);
-        autoLoadTimeoutRef.current = null;
+      if (!isCustomRange) {
+        clearOwnedAutoLoad('effect-start');
       }
     };
   // state.isComplete is needed in deps because the cache-filter effect
@@ -494,7 +566,7 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
   // this auto-start effect reads stale isComplete from stateRef and
   // incorrectly skips loading (e.g. switching from '7d' to 'all' where
   // the old isComplete=true hasn't been updated to false yet).
-  }, [pubkey, timeRange, customRange, loadMoreZaps, state.isComplete]);
+  }, [pubkey, timeRange, customRange, loadMoreZaps, state.isComplete, scheduleAutoLoad, clearOwnedAutoLoad]);
 
   // Additional effect to handle time range changes that need extended data
   useEffect(() => {
@@ -535,17 +607,13 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       currentState.consecutiveZeroResults < maxConsecutiveZeroResults; // NEW: Stop if too many zero results
 
     if (needsExtendedData) {
-      autoLoadTimeoutRef.current = setTimeout(() => {
-        loadMoreZaps(true);
-      }, ZAP_FETCH_CONFIG.AUTO_LOAD_DELAY_MS * 2);
+      scheduleAutoLoad('effect-extend', ZAP_FETCH_CONFIG.AUTO_LOAD_DELAY_MS * 2);
     }
 
     return () => {
-      if (autoLoadTimeoutRef.current) {
-        clearTimeout(autoLoadTimeoutRef.current);
-      }
+      clearOwnedAutoLoad('effect-extend');
     };
-  }, [pubkey, timeRange, customRange, state.receipts.length, state.allReceiptsCache.length, state.isLoading, state.isComplete, state.autoLoadEnabled, state.consecutiveZeroResults, loadMoreZaps]);
+  }, [pubkey, timeRange, customRange, state.receipts.length, state.allReceiptsCache.length, state.isLoading, state.isComplete, state.autoLoadEnabled, state.consecutiveZeroResults, loadMoreZaps, scheduleAutoLoad, clearOwnedAutoLoad]);
 
   // Function to manually trigger loading (for load more button)
   const manualLoadMore = useCallback(() => {
@@ -565,15 +633,14 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       consecutiveFailures: 0,
       consecutiveZeroResults: 0 // Reset zero results counter too
     }));
+    answeredZeroStreakRef.current = 0;
 
     // If we're not loading and not complete, start loading
     const currentState = stateRef.current;
     if (!currentState.isLoading && !currentState.isComplete) {
-      autoLoadTimeoutRef.current = setTimeout(() => {
-        loadMoreZaps(true);
-      }, ZAP_FETCH_CONFIG.AUTO_LOAD_DELAY_MS);
+      scheduleAutoLoad('auto', ZAP_FETCH_CONFIG.AUTO_LOAD_DELAY_MS);
     }
-  }, [loadMoreZaps]);
+  }, [scheduleAutoLoad]);
 
   return {
     ...state,
