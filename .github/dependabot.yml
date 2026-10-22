@@ -42,8 +42,6 @@ updates:
     # break the build). Tracked as issues; security advisories for the
     # pinned majors still surface via the security-update channel.
     ignore:
-      - dependency-name: "zod"
-        versions: [">=4.0.0"]
       - dependency-name: "recharts"
         versions: [">=3.0.0"]
       - dependency-name: "@getalby/sdk"
