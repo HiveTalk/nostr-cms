@@ -170,6 +170,34 @@ function useAdminApi() {
 
   const ensureAdminSession = useCallback(async (base: string): Promise<void> => {
     if (!user?.pubkey) throw new Error('Please login with the primary owner key first');
+
+    // Current backend: challenge -> sign a kind-27235 event whose content is
+    // the challenge -> POST {event} to establish the session cookie.
+    try {
+      const challengeResponse = await fetch(`${base}/challenge`, { credentials: 'include' });
+      if (challengeResponse.ok) {
+        const { challenge, kind } = (await challengeResponse.json()) as { challenge?: string; kind?: number };
+        if (challenge) {
+          const event = await user.signer.signEvent({
+            kind: kind ?? 27235,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [],
+            content: challenge,
+          });
+          const loginResponse = await fetch(`${base}/login`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event }),
+          });
+          if (loginResponse.ok) return;
+        }
+      }
+    } catch {
+      // Fall through to the legacy login below.
+    }
+
+    // Legacy backend predating challenge login: bare pubkey POST.
     const loginResponse = await fetch(`${base}/login`, {
       method: 'POST',
       credentials: 'include',
@@ -177,7 +205,7 @@ function useAdminApi() {
       body: JSON.stringify({ pubkey: user.pubkey.toLowerCase().trim() }),
     });
     if (!loginResponse.ok) throw new Error(await parseError(loginResponse));
-  }, [user?.pubkey]);
+  }, [user]);
 
   const fetchAdminApi = useCallback(async (path: string): Promise<Response> => {
     if (!user) throw new Error('Please login with the primary owner key first');
