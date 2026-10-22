@@ -42,9 +42,6 @@
 - shadcn-ui - Component architecture pattern (configured in `tailwind.config.ts`)
 
 **Rich Text Editing:**
-- @tiptap/react ^3.15.3 - Rich text editor
-- @tiptap/starter-kit ^3.15.3 - Base Tiptap extensions
-- @tiptap/extension-* - Character count, image, link, placeholder extensions
 
 **Styling:**
 - tailwindcss ^3.4.11 - Utility-first CSS

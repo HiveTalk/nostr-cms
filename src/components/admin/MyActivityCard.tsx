@@ -79,6 +79,7 @@ async function paginateAuthorFilter(
   const events = new Map<string, NostrEvent>();
   let until: number | undefined;
   let partial = false;
+  let relayCap = 0; // largest observed page = effective relay cap estimate
 
   for (let page = 0; page < MAX_PAGES; page++) {
     const f: NostrFilter = { ...filter };
@@ -107,7 +108,43 @@ async function paginateAuthorFilter(
       if (evt.created_at < oldest) oldest = evt.created_at;
     }
 
-    if (newOnPage === 0) break;
+    relayCap = Math.max(relayCap, batch.length);
+    if (newOnPage === 0) {
+      if (batch.length === 0 || until === undefined) break;
+      // The page repeated: the boundary second may exceed the relay's cap —
+      // filters have no intra-timestamp cursor. Probe it for PROOF of
+      // omission: unseen IDs or a response above the observed cap. Equality
+      // is fundamentally ambiguous (can't distinguish a hard cap from an
+      // exactly-full second) and is not evidence — it is not flagged.
+      try {
+        const probe = await nostr.query(
+          [{ ...filter, since: until, until, limit: relayCap + 1 }],
+          { signal },
+        );
+        if (probe.length > relayCap || probe.some((evt) => !events.has(evt.id))) {
+          partial = true;
+        }
+      } catch {
+        partial = true;
+      }
+      if (page === MAX_PAGES - 1) {
+        // Budget spent — flag only when history actually remains unread.
+        try {
+          const remaining = await nostr.query(
+            [{ ...filter, until: until - 1, limit: 1 }],
+            { signal },
+          );
+          if (remaining.length > 0) partial = true;
+        } catch {
+          partial = true;
+        }
+        break;
+      }
+      // `until` is inclusive — step below the boundary second to keep reading
+      // older events rather than stopping at the repeated page.
+      until = until - 1;
+      continue;
+    }
     until = oldest;
     if (page === MAX_PAGES - 1) partial = true;
   }

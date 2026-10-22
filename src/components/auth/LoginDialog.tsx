@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useLoginActions } from '@/hooks/useLoginActions';
+import { isNsecLoginEnabled } from '@/lib/relay';
 import { DialogTitle } from '@radix-ui/react-dialog';
 
 interface LoginDialogProps {
@@ -172,18 +173,22 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
 
   const hasExtension = 'nostr' in window;
   const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
+  const nsecEnabled = isNsecLoginEnabled();
 
   const renderTabs = () => (
-    <Tabs defaultValue="key" className="w-full">
-      <TabsList className="grid w-full grid-cols-2 bg-muted/80 rounded-lg mb-4">
-        <TabsTrigger value="key" className="flex items-center gap-2">
-          <span>Secret Key</span>
-        </TabsTrigger>
+    <Tabs defaultValue={nsecEnabled ? 'key' : 'bunker'} className="w-full">
+      <TabsList className={`grid w-full ${nsecEnabled ? 'grid-cols-2' : 'grid-cols-1'} bg-muted/80 rounded-lg mb-4`}>
+        {nsecEnabled && (
+          <TabsTrigger value="key" className="flex items-center gap-2">
+            <span>Secret Key</span>
+          </TabsTrigger>
+        )}
         <TabsTrigger value="bunker" className="flex items-center gap-2">
           <span>Remote Signer</span>
         </TabsTrigger>
       </TabsList>
 
+      {nsecEnabled && (
       <TabsContent value='key' className='space-y-4'>
         <form onSubmit={(e) => {
           e.preventDefault();
@@ -243,6 +248,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin }) =
           )}
         </form>
       </TabsContent>
+      )}
 
       <TabsContent value='bunker' className='space-y-4'>
         <form onSubmit={(e) => {

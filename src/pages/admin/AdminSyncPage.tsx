@@ -304,8 +304,15 @@ export default function AdminSyncPage() {
     };
 
     const handleDateRangeSelect = (range: DateRange | undefined) => {
+        if (!range) {
+            // Range cleared — reset to the default last-24h filter.
+            setDateRange(undefined);
+            setSinceHours(-24);
+            setUntilHours(0);
+            return;
+        }
         setDateRange(range);
-        if (range?.from) {
+        if (range.from) {
             const now = new Date();
             const newSince = differenceInHours(range.from, now);
             setSinceHours(newSince);
@@ -711,7 +718,7 @@ export default function AdminSyncPage() {
                                             </PopoverTrigger>
                                             <PopoverContent className="w-auto p-0" align="start">
                                                 <Calendar
-                                                    initialFocus
+                                                    autoFocus
                                                     mode="range"
                                                     defaultMonth={dateRange?.from}
                                                     selected={dateRange}

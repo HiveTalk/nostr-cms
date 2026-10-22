@@ -32,7 +32,7 @@ A comprehensive meetup or small organization and event management system built w
 ### Admin Dashboard
 - **Authentication**: Remote `nostr.json` validation for admin access control.
 - **Admin Roles**: Support for **Primary** and **Secondary** admin roles with different publishing permissions.
-- **Content Management**: Full CMS with TipTap rich text editor for blogs and events.
+- **Content Management**: Full CMS for blogs, pages, notes, and events. Blogs and pages use a markdown editor with formatting toolbar.
 - **Static Pages**: Create and manage static HTML/Markdown pages via **Kind 34128** (nsite) with Blossom storage.
 - **Blog Management**: Create, edit, and manage long-form content (**NIP-23**) with username-based filtering.
 - **Event Management**: Create and manage events with RSVP functionality (**NIP-52**) and username-based filtering.
@@ -67,7 +67,7 @@ A comprehensive meetup or small organization and event management system built w
 - **Vite**: Fast build tool and development server.
 - **TailwindCSS & shadcn/ui**: Utility-first CSS and high-quality UI components.
 - **Nostrify**: Nostr protocol integration.
-- **TipTap**: Rich text editor for content creation.
+- **Markdown editor**: Formatting toolbar on blogs and pages; @-mention suggestions in the notes composer.
 - **TanStack Query**: Data fetching and state management.
 - **Blossom**: Media and static content storage.
 - **WebLN**: Lightning Network integration for zaps.

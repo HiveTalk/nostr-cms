@@ -12,6 +12,8 @@ import { nip19 } from 'nostr-tools';
 import { RefreshCw } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { PageContent } from '@/components/admin/settings/PageContent';
+import { sha256 as sha256sum } from '@noble/hashes/sha256';
+import { bytesToHex } from '@noble/hashes/utils';
 
 export default function StaticPage({ pathOverride }: { pathOverride?: string }) {
   const { config: appContext } = useAppContext();
@@ -72,7 +74,7 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
     async function fetchFromBlossom() {
       if (!pageEvent) return;
 
-      const sha256 = pageEvent.tags.find(([name]) => name === 'sha256')?.[1];
+      const sha256 = pageEvent.tags.find(([name]) => name === 'sha256')?.[1]?.toLowerCase();
       if (!sha256) {
         // Fallback to event content if no sha256 (though our admin adds it)
         setContent(pageEvent.content);
@@ -90,7 +92,15 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
           try {
             const response = await fetch(`${server}${sha256}`);
             if (response.ok) {
-              fetchedContent = await response.text();
+              const bytes = await response.arrayBuffer();
+              // Verify the blob matches the sha256 tag — a hostile or
+              // misconfigured Blossom server could otherwise serve arbitrary
+              // content under a trusted page's hash.
+              if (bytesToHex(sha256sum(new Uint8Array(bytes))) !== sha256.toLowerCase()) {
+                console.warn(`Blossom hash mismatch from ${server}, skipping`);
+                continue;
+              }
+              fetchedContent = new TextDecoder().decode(bytes);
               break;
             }
           } catch (e) {

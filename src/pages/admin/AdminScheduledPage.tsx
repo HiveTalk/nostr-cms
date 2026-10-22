@@ -481,9 +481,10 @@ function RetryScheduledPostDialog({
     scheduledFor: new Date(),
   });
   const [preserveSignature, setPreserveSignature] = useState(true);
-  const signerAvailable =
-    typeof window !== 'undefined' &&
-    typeof (window as Window & { nostr?: { signEvent?: unknown } }).nostr?.signEvent === 'function';
+  // Fresh-copy signing uses the logged-in account's signer (extension, nsec
+  // or NIP-46 bunker) — window.nostr would exclude bunker/nsec logins.
+  const { user } = useCurrentUser();
+  const signerAvailable = !!user;
 
   if (!post) return null;
 

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button.tsx';
 import LoginDialog from './LoginDialog';
 import SignupDialog from './SignupDialog';
+import { isNsecLoginEnabled } from '@/lib/relay';
 import { useLoggedInAccounts } from '@/hooks/useLoggedInAccounts';
 import { AccountSwitcher } from './AccountSwitcher';
 import { cn } from '@/lib/utils';
@@ -34,13 +35,13 @@ export function LoginArea({ className }: LoginAreaProps) {
             className='flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground w-full font-medium transition-all hover:bg-primary/90 animate-scale-in'
           >
             <span className='truncate'>Log in</span>
-          </Button><Button
+          </Button>{isNsecLoginEnabled() && (<Button
             onClick={() => setSignupDialogOpen(true)}
             variant="outline"
             className="flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all"
           >
             <span>Sign up</span>
-          </Button>
+          </Button>)}
         </div>
       )}
 
@@ -50,10 +51,12 @@ export function LoginArea({ className }: LoginAreaProps) {
         onLogin={handleLogin}
       />
 
+      {isNsecLoginEnabled() && (
       <SignupDialog
         isOpen={signupDialogOpen}
         onClose={() => setSignupDialogOpen(false)}
       />
+      )}
     </div>
   );
 }

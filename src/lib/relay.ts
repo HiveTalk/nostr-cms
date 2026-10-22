@@ -136,3 +136,17 @@ export function isUnifiedSetup(): boolean {
 export function getSwarmAdminApiUrl(): string {
   return `${getApiBaseUrl().replace(/\/$/, '')}/admin`;
 }
+
+/**
+ * Whether the raw-nsec login path (key paste + file import + signup key
+ * generation) is offered. Defaults OFF — production builds hide it unless
+ * VITE_ENABLE_NSEC_LOGIN=true is set explicitly.
+ *
+ * This is a policy control, not a sandbox: nostrify's login machinery remains
+ * bundled, but with no UI entry point there is no path for a user to place a
+ * raw secret into localStorage-backed login state. Extension (NIP-07) and
+ * bunker (NIP-46) logins are unaffected — the key never enters the page.
+ */
+export function isNsecLoginEnabled(): boolean {
+  return import.meta.env.VITE_ENABLE_NSEC_LOGIN === 'true';
+}

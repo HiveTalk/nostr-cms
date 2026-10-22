@@ -33,6 +33,13 @@ export function useUploadFile() {
         }
       }
 
+      // Warn when no Blossom server is configured — the fallback silently
+      // ships uploads to a third-party public server. Deployments should
+      // configure blossomRelays rather than rely on it.
+      if (relays.length === 0) {
+        console.warn('No Blossom server configured — falling back to blossom.primal.net');
+      }
+
       const { tags } = await uploadMediaFile(
         file,
         relays.length > 0 ? relays : ['https://blossom.primal.net/'],

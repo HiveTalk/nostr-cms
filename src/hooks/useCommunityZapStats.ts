@@ -229,7 +229,35 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
           break;
         }
         pageCapacity = Math.max(pageCapacity, batch.length);
-        if (since > 0 && oldest <= since) break;
+        if (since > 0 && oldest <= since) {
+          // The range floor may hold more receipts than the page carried —
+          // probe the boundary second with a limit beyond what we have seen
+          // there; unseen receipts mean the range is truncated, not complete.
+          try {
+            const seenAtFloor = [...receipts.values()].filter(
+              (e) => e.created_at === since,
+            ).length;
+            const floorProbe = await nostr.query(
+              [{
+                kinds: [9735],
+                '#p': [...memberSet],
+                limit: seenAtFloor + 1,
+                since,
+                until: since,
+              }],
+              { signal },
+            );
+            // A probe at the observed relay cap is ambiguous even if nothing
+            // new appears — the second may exceed what the cap carries.
+            if (floorProbe.length > seenAtFloor || floorProbe.length >= pageCapacity) {
+              suspectedPartial = true;
+            }
+            for (const evt of floorProbe) ingest(evt);
+          } catch {
+            suspectedPartial = true;
+          }
+          break;
+        }
         cursor = oldest;
         if (page === MAX_PAGES - 1) partial = true;
       }

@@ -34,10 +34,45 @@ export async function queryWithNip65Fanout(
   nip65RelayUrls: string[],
   signal: AbortSignal,
 ): Promise<NostrEvent[]> {
+  const { events } = await queryWithNip65FanoutDetailed(nostr, filters, nip65RelayUrls, signal);
+  return events;
+}
+
+/**
+ * Per-source result of a fanout query. Index 0 is always the default relay
+ * (nostr.query through the pool); the rest are NIP-65 relays in the order
+ * they were passed in.
+ */
+export interface FanoutSource {
+  url: string;
+  status: 'fulfilled' | 'rejected';
+  events: NostrEvent[];
+}
+
+export interface DetailedFanoutResult {
+  events: NostrEvent[];
+  sources: FanoutSource[];
+}
+
+/**
+ * Same fanout as queryWithNip65Fanout, but reports which sources fulfilled
+ * or rejected (e.g. aborted by timeout) and which events came from each.
+ *
+ * Callers that paginate need this to tell "the primary relay confirmed it
+ * has no more data" apart from "some relay timed out and told us nothing".
+ */
+export async function queryWithNip65FanoutDetailed(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  nostr: any,
+  filters: NostrFilter[],
+  nip65RelayUrls: string[],
+  signal: AbortSignal,
+): Promise<DetailedFanoutResult> {
   // Start all queries in parallel. The default relay (nostr.query) is
   // the primary source — external NIP-65 relays supplement with additional
   // data. We wait for all to settle, but the signal timeout ensures slow
   // relays don't block the response for too long.
+  const urls = ['default', ...nip65RelayUrls];
   const results = await Promise.allSettled([
     nostr.query(filters, { signal }),
     ...nip65RelayUrls.map((url: string) => {
@@ -50,15 +85,18 @@ export async function queryWithNip65Fanout(
     }),
   ]);
 
-  const allEvents = results
-    .filter(
-      (r): r is PromiseFulfilledResult<NostrEvent[]> =>
-        r.status === 'fulfilled',
-    )
-    .flatMap((r) => r.value);
+  const sources: FanoutSource[] = results.map((r, i) => ({
+    url: urls[i],
+    status: r.status,
+    events: r.status === 'fulfilled' ? r.value : [],
+  }));
 
   // Deduplicate by event ID
-  return Array.from(new Map(allEvents.map((e) => [e.id, e])).values());
+  const events = Array.from(
+    new Map(sources.flatMap((s) => s.events).map((e) => [e.id, e])).values(),
+  );
+
+  return { events, sources };
 }
 
 /**
