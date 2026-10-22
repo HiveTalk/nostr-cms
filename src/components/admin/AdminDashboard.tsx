@@ -1,5 +1,4 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FileText, Calendar, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, X, BookOpen, WifiOff, Filter } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -243,7 +242,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         {stats.map((stat) => (
           <Card key={stat.title}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -260,11 +259,6 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         ))}
-        {/* My Activity — visible to all admin users (primary & secondary).
-            Computes stats client-side: a paginated author query over the
-            relay for event counts, plus the Blossom /list endpoint for
-            media — no dashboard session required. */}
-        <MyActivityCard />
       </div>
 
       {/* Recent Content */}
@@ -306,51 +300,11 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Upcoming Events */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming Events</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {upcomingEvents?.slice(0, 5).map((event) => {
-                const tags = event.tags || [];
-                const isLiveEvent = event.kind === 30313;
-                const title = tags.find(([name]) => name === 'title')?.[1] || 'Untitled Event';
-                // 30313 uses 'starts', 31922/31923 uses 'start'
-                const startTag = tags.find(([name]) => name === (isLiveEvent ? 'starts' : 'start'))?.[1];
-                const status = tags.find(([name]) => name === 'status')?.[1] || (isLiveEvent ? 'planned' : 'confirmed');
-
-                let dateDisplay = 'No date';
-                if (startTag) {
-                  const parsedStart = isLiveEvent ? Number(startTag) : parseNostrEventTime(startTag);
-                  if (parsedStart) {
-                    dateDisplay = new Date(parsedStart * 1000).toLocaleDateString();
-                  }
-                }
-
-                return (
-                  <div key={event.id} className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium leading-none">
-                        {title}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {dateDisplay}
-                      </p>
-                    </div>
-                    <Badge variant={status === 'confirmed' || status === 'planned' ? 'default' : 'secondary'}>
-                      {status}
-                    </Badge>
-                  </div>
-                );
-              })}
-              {(!upcomingEvents || upcomingEvents.length === 0) && (
-                <p className="text-sm text-muted-foreground">No upcoming events.</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        {/* My Activity — visible to all admin users (primary & secondary).
+            Computes stats client-side: a paginated author query over the
+            relay for event counts, plus the Blossom /list endpoint for
+            media — no dashboard session required. */}
+        <MyActivityCard />
       </div>
     </div>
   );
