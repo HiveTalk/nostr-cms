@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { getDefaultRelayUrl, getSiteConfigDTag } from '@/lib/relay';
+import { buildSiteConfigTags } from '@/lib/siteConfig';
 import { BUILTIN_HOMEPAGE_SECTION_IDS } from '@/components/admin/settings/types';
 
 interface SiteConfig {
@@ -38,6 +39,7 @@ interface SiteConfig {
   adminRoles: Record<string, 'publisher' | 'user'>;
   tweakcnThemeUrl?: string;
   feedNpubs: string[];
+  blogNpubs: string[];
   feedReadFromPublishRelays: boolean;
   sectionOrder?: string[];
   readOnlyAdminAccess: boolean;
@@ -140,6 +142,7 @@ export default function AdminSystemSettings() {
     ],
     adminRoles: config.siteConfig?.adminRoles ?? {},
     feedNpubs: config.siteConfig?.feedNpubs ?? [],
+    blogNpubs: config.siteConfig?.blogNpubs ?? [],
     feedReadFromPublishRelays: config.siteConfig?.feedReadFromPublishRelays ?? false,
     sectionOrder: config.siteConfig?.sectionOrder ?? ['navigation', 'basic', 'styling', 'hero', 'content', 'feed'],
     readOnlyAdminAccess: config.siteConfig?.readOnlyAdminAccess ?? false,
@@ -163,6 +166,7 @@ export default function AdminSystemSettings() {
         publishRelays: config.siteConfig?.publishRelays ?? prev.publishRelays,
         adminRoles: config.siteConfig?.adminRoles ?? prev.adminRoles,
         feedNpubs: config.siteConfig?.feedNpubs ?? prev.feedNpubs,
+        blogNpubs: config.siteConfig?.blogNpubs ?? prev.blogNpubs,
         feedReadFromPublishRelays: config.siteConfig?.feedReadFromPublishRelays ?? prev.feedReadFromPublishRelays,
         sectionOrder: config.siteConfig?.sectionOrder ?? prev.sectionOrder,
       }) as SiteConfig);
@@ -270,6 +274,16 @@ export default function AdminSystemSettings() {
           }
         }
 
+        const blogNpubsTag = eventTags.find(([name]) => name === 'blog_npubs')?.[1];
+        if (blogNpubsTag) {
+          try {
+            const parsed = JSON.parse(blogNpubsTag);
+            if (Array.isArray(parsed)) loadedConfig.blogNpubs = parsed as string[];
+          } catch (e) {
+            console.error('Failed to parse blog_npubs tag', e);
+          }
+        }
+
         const feedReadTag = eventTags.find(([name]) => name === 'feed_read_from_publish_relays')?.[1];
         if (feedReadTag !== undefined) loadedConfig.feedReadFromPublishRelays = feedReadTag === 'true';
 
@@ -341,44 +355,9 @@ export default function AdminSystemSettings() {
     const filteredRelays = siteConfig.publishRelays.filter(r => r.trim() !== '');
 
     try {
-      const scopedDTag = getSiteConfigDTag();
-      // Pull fields managed by AdminSettings from the full app context config
-      // so this save doesn't erase them from the relay event.
-      const sc = config.siteConfig;
-      const configTags = [
-        ['d', scopedDTag],
-        ['title', siteConfig.title],
-        ['logo', siteConfig.logo],
-        ['favicon', siteConfig.favicon],
-        ['og_image', siteConfig.ogImage],
-        ['hero_title', siteConfig.heroTitle],
-        ['hero_subtitle', siteConfig.heroSubtitle],
-        ['hero_background', siteConfig.heroBackground],
-        ['hero_background_type', sc?.heroBackgroundType ?? (siteConfig.heroBackground ? 'image' : 'none')],
-        ['hero_background_color', sc?.heroBackgroundColor ?? '#1a1a2e'],
-        ['hero_text_color', sc?.heroTextColor ?? '#ffffff'],
-        ['hero_banner', sc?.heroBanner ?? ''],
-        ['hero_buttons', JSON.stringify(sc?.heroButtons ?? [])],
-        ['show_events', siteConfig.showEvents.toString()],
-        ['show_blog', siteConfig.showBlog.toString()],
-        ['show_feed', (sc?.showFeed ?? false).toString()],
-        ['max_events', siteConfig.maxEvents.toString()],
-        ['max_blog_posts', siteConfig.maxBlogPosts.toString()],
-        ['max_feed_notes', (sc?.maxFeedNotes ?? 20).toString()],
-        ['default_relay', siteConfig.defaultRelay],
-        ['publish_relays', JSON.stringify(filteredRelays)],
-        ['blossom_relays', JSON.stringify(siteConfig.blossomRelays)],
-        ['admin_roles', JSON.stringify(siteConfig.adminRoles)],
-        ['feed_npubs', JSON.stringify(siteConfig.feedNpubs)],
-        ['feed_read_from_publish_relays', siteConfig.feedReadFromPublishRelays.toString()],
-        ['tweakcn_theme_url', siteConfig.tweakcnThemeUrl || ''],
-        ['nip19_gateway', sc?.nip19Gateway ?? 'https://nostr.at'],
-        ['section_order', JSON.stringify(siteConfig.sectionOrder || [])],
-        ['homepage_section_order', JSON.stringify(sc?.homepageSectionOrder?.length ? sc.homepageSectionOrder : [...BUILTIN_HOMEPAGE_SECTION_IDS])],
-        ['read_only_admin_access', siteConfig.readOnlyAdminAccess.toString()],
-        ['auto_harvest_24h', (siteConfig.autoHarvest24h ?? false).toString()],
-        ['updated_at', Math.floor(Date.now() / 1000).toString()],
-      ];
+      // Merge fields managed elsewhere (context config) under this page's
+      // local state so the replaceable event keeps every tag.
+      const configTags = buildSiteConfigTags({ ...config.siteConfig, ...siteConfig });
 
       await publishEvent({
         event: {

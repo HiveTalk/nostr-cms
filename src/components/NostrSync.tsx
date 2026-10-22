@@ -201,6 +201,16 @@ export function NostrSync() {
             }
           }
 
+          const blogNpubsTag = eventTags.find(([name]) => name === 'blog_npubs')?.[1];
+          if (blogNpubsTag) {
+            try {
+              const parsed = JSON.parse(blogNpubsTag);
+              if (Array.isArray(parsed)) loadedConfig.blogNpubs = parsed;
+            } catch (e) {
+              console.warn('[NostrSync] Failed to parse blog_npubs', e);
+            }
+          }
+
           const feedReadTag = eventTags.find(([name]) => name === 'feed_read_from_publish_relays')?.[1];
           if (feedReadTag !== undefined) loadedConfig.feedReadFromPublishRelays = feedReadTag === 'true';
 

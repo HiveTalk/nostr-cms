@@ -464,22 +464,27 @@ const Index = ({ preview = false }: { preview?: boolean } = {}) => {
   const { data: events = [], isLoading: eventsLoading } = useCalendarEvents(getMasterPubkey(), 'all');
 
   // Fetch blog posts
+  const blogAuthors = useMemo(() => normalizeToHexPubkeys(config.siteConfig?.blogNpubs || []), [config.siteConfig?.blogNpubs]);
   const { data: posts = [], isLoading: postsLoading } = useQuery({
-    queryKey: ['blog-posts', config.siteConfig?.defaultRelay, config.siteConfig?.adminRoles],
+    queryKey: ['blog-posts', config.siteConfig?.defaultRelay, config.siteConfig?.adminRoles, blogAuthors],
     queryFn: async () => {
       const signal = AbortSignal.timeout(5000);
       const postList = await nostr!.query([
-        { kinds: [30023], limit: 50 }
+        { kinds: [30023], limit: 50, ...(blogAuthors.length > 0 ? { authors: blogAuthors } : {}) }
       ], { signal });
-      
+
       const adminRoles = config.siteConfig?.adminRoles || {};
       const masterPubkey = getMasterPubkey();
 
       return postList
         .filter(event => {
           const authorPubkey = event.pubkey.toLowerCase().trim();
-          // Always show if author is the master user
-          if (authorPubkey !== masterPubkey && adminRoles[authorPubkey] !== 'publisher') return false;
+          // An explicit author allowlist replaces the role-based rule — when
+          // set, only listed authors' posts appear (the author need not be an
+          // admin or the master user).
+          if (blogAuthors.length > 0) {
+            if (!blogAuthors.includes(authorPubkey)) return false;
+          } else if (authorPubkey !== masterPubkey && adminRoles[authorPubkey] !== 'publisher') return false;
           
           // Double check: don't show Kind 30023 if it's explicitly marked as NOT published
           const isPublished = event.tags.find(([name]) => name === 'published')?.[1] !== 'false';

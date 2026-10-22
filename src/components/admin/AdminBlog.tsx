@@ -27,6 +27,7 @@ import { useToast } from '@/hooks/useToast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Edit, Trash2, Eye, Layout, Share2, Image as ImageIcon, Loader2, Clock, Filter, RefreshCw, Search, ChevronDown, X, User, Repeat } from 'lucide-react';
 import { MediaSelectorDialog } from './MediaSelectorDialog';
+import { BlogVisibilityCard } from './BlogVisibilityCard';
 import { SchedulePicker } from './SchedulePicker';
 import { MarkdownToolbar } from './settings/MarkdownToolbar';
 import { PageContent } from './settings/PageContent';
@@ -1057,6 +1058,8 @@ export default function AdminBlog() {
                 Show only users from nostr.json
               </Label>
             </div>
+
+            <BlogVisibilityCard />
           </div>
 
           <div className="space-y-4">

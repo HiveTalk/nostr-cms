@@ -36,6 +36,8 @@ export interface AppConfig {
     showBlog?: boolean;
     showFeed?: boolean;
     feedNpubs?: string[];
+    /** When set, only these authors' blog posts (kind 30023) appear on public pages. Empty = master + publishers. */
+    blogNpubs?: string[];
     feedReadFromPublishRelays?: boolean;
     maxEvents?: number;
     maxBlogPosts?: number;
