@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getDefaultRelayUrl, getSiteConfigDTag } from '@/lib/relay';
+import { buildSiteConfigTags } from '@/lib/siteConfig';
 import { Save, RotateCcw, RefreshCw, ShieldAlert, Eye, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
@@ -443,6 +444,16 @@ export default function AdminSettings() {
           }
         }
 
+        const blogNpubsTag = eventTags.find(([name]) => name === 'blog_npubs')?.[1];
+        if (blogNpubsTag) {
+          try {
+            const parsed = JSON.parse(blogNpubsTag);
+            if (Array.isArray(parsed)) loadedConfig.blogNpubs = parsed;
+          } catch (e) {
+            console.error('Failed to parse blog_npubs tag', e);
+          }
+        }
+
         const feedReadFromPublishRelays = eventTags.find(([name]) => name === 'feed_read_from_publish_relays')?.[1];
         if (feedReadFromPublishRelays !== undefined) loadedConfig.feedReadFromPublishRelays = feedReadFromPublishRelays === 'true';
 
@@ -498,40 +509,9 @@ export default function AdminSettings() {
     const filteredRelays = siteConfig.publishRelays.filter(r => r.trim() !== '');
 
     try {
-      const scopedDTag = getSiteConfigDTag();
-      const configTags = [
-        ['d', scopedDTag],
-        ['title', siteConfig.title],
-        ['logo', siteConfig.logo],
-        ['favicon', siteConfig.favicon],
-        ['og_image', siteConfig.ogImage],
-        ['hero_title', siteConfig.heroTitle],
-        ['hero_subtitle', siteConfig.heroSubtitle],
-        ['hero_background', siteConfig.heroBackground],
-        ['hero_background_type', siteConfig.heroBackgroundType],
-        ['hero_background_color', siteConfig.heroBackgroundColor],
-        ['hero_text_color', siteConfig.heroTextColor],
-        ['hero_banner', siteConfig.heroBanner],
-        ['hero_buttons', JSON.stringify(siteConfig.heroButtons)],
-        ['show_events', siteConfig.showEvents.toString()],
-        ['show_blog', siteConfig.showBlog.toString()],
-        ['show_feed', siteConfig.showFeed.toString()],
-        ['max_events', siteConfig.maxEvents.toString()],
-        ['max_blog_posts', siteConfig.maxBlogPosts.toString()],
-        ['max_feed_notes', siteConfig.maxFeedNotes.toString()],
-        ['default_relay', siteConfig.defaultRelay],
-        ['publish_relays', JSON.stringify(filteredRelays)],
-        ['admin_roles', JSON.stringify(siteConfig.adminRoles)],
-        ['feed_npubs', JSON.stringify(siteConfig.feedNpubs)],
-        ['feed_read_from_publish_relays', siteConfig.feedReadFromPublishRelays.toString()],
-        ['tweakcn_theme_url', siteConfig.tweakcnThemeUrl || ''],
-        ['nip19_gateway', siteConfig.nip19Gateway || 'https://nostr.at'],
-        ['section_order', JSON.stringify(siteConfig.sectionOrder)],
-        ['homepage_section_order', JSON.stringify(siteConfig.homepageSectionOrder)],
-        ['read_only_admin_access', siteConfig.readOnlyAdminAccess.toString()],
-        ['auto_harvest_24h', (siteConfig.autoHarvest24h ?? false).toString()],
-        ['updated_at', Math.floor(Date.now() / 1000).toString()],
-      ];
+      // Merge this page's local state over the context config so the
+      // replaceable event keeps tags managed by other admin pages.
+      const configTags = buildSiteConfigTags({ ...config.siteConfig, ...siteConfig });
 
       await publishEvent({
         event: {

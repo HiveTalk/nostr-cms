@@ -11,7 +11,8 @@ import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { useToast } from '@/hooks/useToast';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
-import { getSwarmAdminApiUrl, isUnifiedSetup, getSiteConfigDTag } from '@/lib/relay';
+import { getSwarmAdminApiUrl, isUnifiedSetup } from '@/lib/relay';
+import { buildSiteConfigTags } from '@/lib/siteConfig';
 import { nip98Fetch } from '@/lib/nip98';
 import { AlertTriangle, RefreshCw, ShieldAlert, Trash2, UserPlus, Crown } from 'lucide-react';
 
@@ -116,32 +117,7 @@ export default function AdminRelayAccess() {
       }));
 
       // Publish the updated site config as a 30078 event
-      const scopedDTag = getSiteConfigDTag();
-      const configTags = [
-        ['d', scopedDTag],
-        ['title', currentConfig.title || ''],
-        ['logo', currentConfig.logo || ''],
-        ['favicon', currentConfig.favicon || ''],
-        ['og_image', currentConfig.ogImage || ''],
-        ['hero_title', currentConfig.heroTitle || ''],
-        ['hero_subtitle', currentConfig.heroSubtitle || ''],
-        ['hero_background', currentConfig.heroBackground || ''],
-        ['hero_buttons', JSON.stringify(currentConfig.heroButtons || [])],
-        ['show_events', (currentConfig.showEvents ?? true).toString()],
-        ['show_blog', (currentConfig.showBlog ?? true).toString()],
-        ['max_events', (currentConfig.maxEvents ?? 6).toString()],
-        ['max_blog_posts', (currentConfig.maxBlogPosts ?? 3).toString()],
-        ['default_relay', currentConfig.defaultRelay || ''],
-        ['publish_relays', JSON.stringify(currentConfig.publishRelays || [])],
-        ['admin_roles', JSON.stringify(updatedAdminRoles)],
-        ['feed_npubs', JSON.stringify(currentConfig.feedNpubs || [])],
-        ['feed_read_from_publish_relays', (currentConfig.feedReadFromPublishRelays ?? false).toString()],
-        ['tweakcn_theme_url', currentConfig.tweakcnThemeUrl || ''],
-        ['nip19_gateway', currentConfig.nip19Gateway || 'https://nostr.at'],
-        ['section_order', JSON.stringify(currentConfig.sectionOrder || [])],
-        ['read_only_admin_access', (currentConfig.readOnlyAdminAccess ?? false).toString()],
-        ['updated_at', Math.floor(Date.now() / 1000).toString()],
-      ];
+      const configTags = buildSiteConfigTags({ ...currentConfig, adminRoles: updatedAdminRoles });
 
       await publishEvent({
         event: {

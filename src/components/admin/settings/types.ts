@@ -28,12 +28,14 @@ export interface SiteConfig {
   showBlog: boolean;
   showFeed: boolean;
   feedNpubs: string[];
+  blogNpubs: string[];
   feedReadFromPublishRelays: boolean;
   maxEvents: number;
   maxBlogPosts: number;
   maxFeedNotes: number;
   defaultRelay: string;
   publishRelays: string[];
+  blossomRelays: string[];
   adminRoles: Record<string, 'publisher' | 'user'>;
   tweakcnThemeUrl?: string;
   sectionOrder?: string[];
@@ -94,12 +96,14 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   showBlog: true,
   showFeed: false,
   feedNpubs: [],
+  blogNpubs: [],
   feedReadFromPublishRelays: false,
   maxEvents: 6,
   maxBlogPosts: 3,
   maxFeedNotes: 5,
   defaultRelay: '',
   publishRelays: [],
+  blossomRelays: [],
   adminRoles: {},
   tweakcnThemeUrl: '',
   nip19Gateway: 'https://nostr.at',

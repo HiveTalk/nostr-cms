@@ -12,6 +12,7 @@ import { useAppContext } from '@/hooks/useAppContext';
 import Navigation from '@/components/Navigation';
 import { Search, Calendar, Edit, RefreshCw } from 'lucide-react';
 import { AuthorInfo } from '@/components/AuthorInfo';
+import { normalizeToHexPubkeys } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -31,21 +32,26 @@ export default function BlogPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const blogAuthors = normalizeToHexPubkeys(config.siteConfig?.blogNpubs || []);
   const { data: posts = [], isLoading, refetch } = useQuery({
-    queryKey: ['blog-posts', config.siteConfig?.adminRoles],
+    queryKey: ['blog-posts', config.siteConfig?.adminRoles, blogAuthors],
     queryFn: async () => {
       const signal = AbortSignal.timeout(5000);
       const postList = await nostr!.query([
-        { kinds: [30023], limit: 100 }
+        { kinds: [30023], limit: 100, ...(blogAuthors.length > 0 ? { authors: blogAuthors } : {}) }
       ], { signal });
-      
+
       const adminRoles = config.siteConfig?.adminRoles || {};
       const masterPubkey = getMasterPubkey();
 
       return postList
         .filter(event => {
           const authorPubkey = event.pubkey.toLowerCase().trim();
-          if (authorPubkey !== masterPubkey && adminRoles[authorPubkey] !== 'publisher') return false;
+          // An explicit author allowlist replaces the role-based rule — when
+          // set, only listed authors' posts appear.
+          if (blogAuthors.length > 0) {
+            if (!blogAuthors.includes(authorPubkey)) return false;
+          } else if (authorPubkey !== masterPubkey && adminRoles[authorPubkey] !== 'publisher') return false;
           
           // Double check: don't show Kind 30023 if it's explicitly marked as NOT published
           const isPublished = event.tags.find(([name]) => name === 'published')?.[1] !== 'false';
