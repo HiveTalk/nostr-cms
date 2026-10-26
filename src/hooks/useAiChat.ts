@@ -147,7 +147,9 @@ export function useAiChat() {
   /**
    * Fetch against the provider directly (personal key) or through the
    * server proxy (NIP-98). `path` is the provider-relative path — the proxy
-   * mirrors it under /api/ai.
+   * mirrors it under /api/ai, except /chat/completions which maps to the
+   * single-segment /api/ai/completions (the catch-all only matches one
+   * path segment on Vercel).
    */
   const aiFetch = useCallback(async (path: string, init: RequestInit): Promise<Response> => {
     if (apiKey) {
@@ -160,7 +162,8 @@ export function useAiChat() {
     if (!user?.signer) {
       throw new Error('You must be logged in to use the AI Helper.');
     }
-    return nip98Fetch(`/api/ai${path}`, init, user);
+    const proxyPath = path === '/chat/completions' ? '/completions' : path;
+    return nip98Fetch(`/api/ai${proxyPath}`, init, user);
   }, [apiKey, baseUrl, user]);
 
   const requireConfigured = useCallback(() => {

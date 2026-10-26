@@ -60,7 +60,7 @@ The repo ships a Vercel serverless proxy at `api/ai/[...path].ts`:
 |-------|---------|
 | `GET /api/ai/status` | `{ enabled, defaultModel }` — public probe |
 | `GET /api/ai/models` | Proxied model list (authenticated) |
-| `POST /api/ai/chat/completions` | Proxied chat completion, streamed (authenticated) |
+| `POST /api/ai/completions` | Proxied chat completion, streamed (authenticated). Single-segment route — the `[...path]` catch-all only matches one segment on Vercel; `chat/completions` is also accepted where routing allows |
 
 Callers authenticate with **NIP-98** (`Authorization: Nostr <base64 kind
 27235>` — the same scheme the Swarm admin API uses). The function verifies
