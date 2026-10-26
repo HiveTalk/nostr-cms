@@ -4,8 +4,8 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://swarm.hivetalk.org/api/:path*"
+      "source": "/api/:path((?!ai(?:/|$)).+)",
+      "destination": "https://swarm.hivetalk.org/api/:path"
     }
   ]
 }

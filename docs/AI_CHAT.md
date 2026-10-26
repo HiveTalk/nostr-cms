@@ -85,9 +85,10 @@ values the frontend uses — Vercel exposes all env vars to functions.
 
 **Notes:**
 
-- `vercel.json` rewrites `/api/:path*` to the Swarm API, but Vercel checks
-  filesystem routes **before** rewrites — so `/api/ai/*` hits these
-  functions while `/api/admin/*` etc. still reach Swarm.
+- `vercel.json` rewrites `/api/*` to the Swarm API. `vercel.json` rewrites
+  are evaluated **before** filesystem functions, so the rewrite source
+  excludes `ai` paths (`/api/:path((?!ai(?:/|$)).+)`) — `/api/ai/*` falls
+  through to these functions while `/api/admin/*` etc. still reach Swarm.
 - Plain `vite dev` has no `/api/ai/*` — `useAiProxyStatus` reports
   `enabled: false` and the master user's encrypted key remains the working
   path. Use `vercel dev` to exercise the proxy locally.
