@@ -155,10 +155,12 @@ async function authorize(req: VercelRequest, rawBody: Buffer): Promise<boolean> 
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const segments = req.query.path;
-  const route = Array.isArray(segments) ? segments.join('/') : String(segments || '');
+  // Derive the route from the URL path — req.query.catch-all params vary
+  // across Vercel runtime versions, the pathname is reliable.
+  const pathname = (req.url || '').split('?')[0];
+  const route = pathname.replace(/^\/api\/ai\/?/, '').replace(/\/+$/, '');
 
-  if (route === 'status') {
+  if (route === 'status' || route === '') {
     if (req.method !== 'GET') return res.status(405).json({ error: 'method not allowed' });
     return res.status(200).json({ enabled: !!AI_API_KEY, defaultModel: AI_MODEL });
   }
