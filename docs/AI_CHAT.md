@@ -1,45 +1,138 @@
-### AI Integration with Shakespeare API
+### AI Integration — OpenAI-Compatible Providers
 
-Use the `useShakespeare` hook for AI chat completions with Nostr authentication. The API dynamically provides available models, so you should query them at runtime rather than hardcoding model names.
+The CMS ships with an **AI Helper** in the admin panel. It talks to any
+OpenAI-compatible chat API (for example
+`https://gateway.trytokenfactory.dev/v1`) using a standard `Bearer` API key —
+no Nostr-specific provider required.
+
+There are two hooks:
+
+- `useAiSettings` — stores the provider config (`apiKey`, `baseUrl`, `model`)
+  **encrypted on the relay** as a replaceable kind `30078` event. The content
+  is NIP-44 (or NIP-04 fallback) encrypted to the master user's own pubkey,
+  so only they can ever read the key — not even the relay operator.
+- `useAiChat` — chat completions, streaming completions, and model discovery
+  against the configured provider.
 
 ```tsx
-import { useShakespeare, type ChatMessage, type Model } from '@/hooks/useShakespeare';
+import { useAiChat, type ChatMessage, type Model } from '@/hooks/useAiChat';
+import { useAiSettings } from '@/hooks/useAiSettings';
 
-const { 
-  sendChatMessage, 
-  sendStreamingMessage, 
-  getAvailableModels, 
-  isLoading, 
-  error, 
-  isAuthenticated 
-} = useShakespeare();
+const {
+  sendChatMessage,
+  sendStreamingMessage,
+  getAvailableModels,
+  isLoading,
+  error,
+  isConfigured,
+  settings,
+} = useAiChat();
 ```
+
+#### The `AI_API_KEY` environment variable
+
+`AI_API_KEY` is the conventional env var name for the provider key on this
+project. It has two uses:
+
+1. **Server-side proxy (Vercel).** The `api/ai/*` serverless functions read
+   `AI_API_KEY`, `AI_BASE_URL`, and `AI_MODEL` from the function environment —
+   never `VITE_*`, so the key is never bundled into the frontend. See
+   "Shared access via the server proxy" below.
+2. **Local tooling and scripts** — for example, checking which models a
+   provider offers before pasting the key into the admin panel:
+
+   ```bash
+   export AI_API_KEY="sk-..."
+   curl https://gateway.trytokenfactory.dev/v1/models \
+     -H "Authorization: Bearer $AI_API_KEY"
+   ```
+
+   The same variable works for local AI CLI tools (Codex `model_providers`
+   `env_key`, OpenCode `apiKey: "{env:AI_API_KEY}"`, or
+   `ANTHROPIC_AUTH_TOKEN=$AI_API_KEY` for Claude Code against an
+   Anthropic-compatible gateway).
+
+#### Shared access via the server proxy
+
+The repo ships a Vercel serverless proxy at `api/ai/[...path].ts`:
+
+| Route | Purpose |
+|-------|---------|
+| `GET /api/ai/status` | `{ enabled, defaultModel }` — public probe |
+| `GET /api/ai/models` | Proxied model list (authenticated) |
+| `POST /api/ai/chat/completions` | Proxied chat completion, streamed (authenticated) |
+
+Callers authenticate with **NIP-98** (`Authorization: Nostr <base64 kind
+27235>` — the same scheme the Swarm admin API uses). The function verifies
+the signature, timestamp, `u`/`method`/`payload` tags, then authorizes:
+
+- the **master pubkey** (nostr.json `_` entry or `VITE_MASTER_PUBKEY`) — always, or
+- **any admin in nostr.json** — only when the site-config tag
+  `ai_helper_access` = `admins` (fetched from the kind 30078 config event on
+  `VITE_DEFAULT_RELAY`, cached per warm instance).
+
+The master toggles this in **Admin Settings → AI Assistant → "Who can use
+the AI Helper"**. With `AI_API_KEY` set on Vercel:
+
+- Master uses the proxy (or their own encrypted key — that takes precedence).
+- Other admins get the AI Helper too — calls are NIP-98 signed from their
+  signer, so they never see the key.
+
+**Server env vars (no `VITE_` prefix):** `AI_API_KEY` (required),
+`AI_BASE_URL`, `AI_MODEL`. The function also reads the *same*
+`VITE_REMOTE_NOSTR_JSON_URL`, `VITE_DEFAULT_RELAY`, `VITE_MASTER_PUBKEY`
+values the frontend uses — Vercel exposes all env vars to functions.
+
+**Notes:**
+
+- `vercel.json` rewrites `/api/:path*` to the Swarm API, but Vercel checks
+  filesystem routes **before** rewrites — so `/api/ai/*` hits these
+  functions while `/api/admin/*` etc. still reach Swarm.
+- Plain `vite dev` has no `/api/ai/*` — `useAiProxyStatus` reports
+  `enabled: false` and the master user's encrypted key remains the working
+  path. Use `vercel dev` to exercise the proxy locally.
+- The encrypted personal-key flow (below) is unchanged and still works on
+  static hosting without any server component.
+
+#### Setup flow (admin UI)
+
+1. Log in as the **master user**.
+2. Go to **Admin Settings → AI Assistant** (`/admin/system-settings`).
+3. Enter the provider's base URL and API key, click **Fetch Models** to verify
+   the connection and load the model list, pick a model, and **Save AI
+   Settings**.
+4. The **AI Helper** item appears in the sidebar between **Dashboard** and
+   **Notes** (`/admin/ai`).
+
+If no API key is saved, the AI Helper stays hidden from the navigation.
+**Remove Key** publishes a NIP-09 deletion for the settings event and hides
+the helper again.
 
 #### Model Selector Component
 
 ```tsx
 function ModelSelector({ onModelSelect }: { onModelSelect: (modelId: string) => void }) {
-  const { getAvailableModels, isLoading } = useShakespeare();
+  const { getAvailableModels, isLoading, isConfigured } = useAiChat();
+  const { data: settings } = useAiSettings();
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   useEffect(() => {
+    if (!isConfigured) return;
+
     const fetchModels = async () => {
       try {
         const response = await getAvailableModels();
-        // Sort models by total cost (cheapest first)
-        const sortedModels = response.data.sort((a, b) => {
-          const costA = parseFloat(a.pricing.prompt) + parseFloat(a.pricing.completion);
-          const costB = parseFloat(b.pricing.prompt) + parseFloat(b.pricing.completion);
-          return costA - costB;
-        });
-        setModels(sortedModels);
-        
-        // Select the cheapest model by default
-        if (sortedModels.length > 0) {
-          const cheapestModel = sortedModels[0];
-          setSelectedModel(cheapestModel.id);
-          onModelSelect(cheapestModel.id);
+        setModels(response.data);
+
+        // Prefer the saved default model, otherwise fall back to the first.
+        const saved = settings?.model;
+        const initial = response.data.some((m) => m.id === saved)
+          ? saved!
+          : response.data[0]?.id;
+        if (initial) {
+          setSelectedModel(initial);
+          onModelSelect(initial);
         }
       } catch (err) {
         console.error('Failed to fetch models:', err);
@@ -47,32 +140,26 @@ function ModelSelector({ onModelSelect }: { onModelSelect: (modelId: string) => 
     };
 
     fetchModels();
-  }, [getAvailableModels, onModelSelect]);
-
-  const handleModelChange = (modelId: string) => {
-    setSelectedModel(modelId);
-    onModelSelect(modelId);
-  };
+  }, [getAvailableModels, isConfigured, settings, onModelSelect]);
 
   return (
     <div>
       <label htmlFor="model-select">Choose Model:</label>
-      <select 
+      <select
         id="model-select"
-        value={selectedModel} 
-        onChange={(e) => handleModelChange(e.target.value)}
+        value={selectedModel}
+        onChange={(e) => {
+          setSelectedModel(e.target.value);
+          onModelSelect(e.target.value);
+        }}
         disabled={isLoading}
       >
         <option value="">Select a model...</option>
-        {models.map((model, index) => {
-          const totalCost = parseFloat(model.pricing.prompt) + parseFloat(model.pricing.completion);
-          const isCheapest = index === 0;
-          return (
-            <option key={model.id} value={model.id}>
-              {model.name} - {isCheapest ? "Cheapest" : `$${totalCost.toFixed(6)}/token`}
-            </option>
-          );
-        })}
+        {models.map((model) => (
+          <option key={model.id} value={model.id}>
+            {model.id}
+          </option>
+        ))}
       </select>
     </div>
   );
@@ -83,7 +170,7 @@ function ModelSelector({ onModelSelect }: { onModelSelect: (modelId: string) => 
 
 ```tsx
 function AIChat() {
-  const { sendChatMessage, isLoading, error, isAuthenticated } = useShakespeare();
+  const { sendChatMessage, isLoading, error, isConfigured } = useAiChat();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -91,22 +178,24 @@ function AIChat() {
   const handleSend = async () => {
     if (!input.trim() || !selectedModel) return;
 
-    const newMessages = [...messages, { role: 'user', content: input }];
+    const newMessages = [...messages, { role: 'user' as const, content: input }];
     setMessages(newMessages);
     setInput('');
 
     try {
       const response = await sendChatMessage(newMessages, selectedModel);
-      setMessages(prev => [...prev, {
+      setMessages((prev) => [...prev, {
         role: 'assistant',
-        content: response.choices[0].message.content as string
+        content: response.choices[0].message.content as string,
       }]);
     } catch (err) {
       console.error('Chat error:', err);
     }
   };
 
-  if (!isAuthenticated) return <div>Please log in to use AI</div>;
+  if (!isConfigured) {
+    return <div>Configure an API key in Admin Settings → AI Assistant first.</div>;
+  }
 
   return (
     <div className="max-w-2xl mx-auto p-4">
@@ -120,7 +209,7 @@ function AIChat() {
       <div className="space-y-2 mb-4">
         {messages.map((msg, i) => (
           <div key={i} className={`p-2 rounded ${msg.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'}`}>
-            <strong>{msg.role}:</strong> {msg.content}
+            <strong>{msg.role}:</strong> {msg.content as string}
           </div>
         ))}
       </div>
@@ -129,14 +218,14 @@ function AIChat() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           className="flex-1 p-2 border rounded"
           disabled={isLoading || !selectedModel}
-          placeholder={!selectedModel ? "Select a model first..." : "Type your message..."}
+          placeholder={!selectedModel ? 'Select a model first...' : 'Type your message...'}
         />
-        <button 
-          onClick={handleSend} 
-          disabled={isLoading || !selectedModel} 
+        <button
+          onClick={handleSend}
+          disabled={isLoading || !selectedModel}
           className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
         >
           Send
@@ -151,29 +240,28 @@ function AIChat() {
 
 ```tsx
 function StreamingChat() {
-  const { sendStreamingMessage } = useShakespeare();
+  const { sendStreamingMessage } = useAiChat();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentResponse, setCurrentResponse] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   const handleStreaming = async (content: string) => {
     if (!selectedModel) return;
-    
+
     setCurrentResponse('');
-    const newMessages = [...messages, { role: 'user', content }];
+    const newMessages = [...messages, { role: 'user' as const, content }];
     setMessages(newMessages);
 
+    // Accumulate into a local variable so nothing is lost on completion.
+    let streamed = '';
     try {
-      await sendStreamingMessage(newMessages, selectedModel, (chunk) => {
-        setCurrentResponse(prev => prev + chunk);
-      });
-      
-      // Add the complete response to messages
-      if (currentResponse.trim()) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: currentResponse
-        }]);
+      await sendStreamingMessage(newMessages, (chunk) => {
+        streamed += chunk;
+        setCurrentResponse(streamed);
+      }, selectedModel);
+
+      if (streamed.trim()) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: streamed }]);
       }
     } catch (err) {
       console.error('Streaming error:', err);
@@ -198,22 +286,30 @@ function StreamingChat() {
 
 #### Model Information
 
-Models are dynamically fetched from the Shakespeare API and include:
+Models are fetched dynamically from `GET {baseUrl}/models` and typically
+include:
 
-- **Model ID**: Unique identifier for the model
-- **Name**: Human-readable model name
-- **Description**: Model capabilities and use cases
-- **Context Window**: Maximum token limit for conversations
-- **Pricing**: Cost per token for prompt and completion
-- **Free Models**: Models with `pricing.prompt === "0"` and `pricing.completion === "0"`
+- **id**: the model identifier to pass to chat calls
+- **object**: `"model"`
+- **owned_by**: the serving provider
+- **context_window / context_length**: maximum token limit (when provided)
+- **pricing**: per-token pricing (when the provider reports it)
 
 #### Key Points
 
-- **Dynamic Model Discovery**: Always fetch available models using `getAvailableModels()`
-- **Authentication Required**: User must be logged in with Nostr account
-- **Free vs Premium**: Check pricing to determine if model requires credits
-- **Error Handling**: Handle `isLoading` and `error` states appropriately
-- **Model Selection**: Provide UI for users to choose between available models
+- **Configuration**: The master user saves `{ apiKey, baseUrl, model }` in
+  Admin Settings → AI Assistant. Everything else reads from there.
+- **Encrypted storage**: The key lives in a NIP-44/NIP-04 encrypted kind
+  30078 event (`d` tag `nostr-cms-ai-settings:<relay>`) — only the master
+  user can decrypt it, and it roams across their devices automatically.
+- **Any OpenAI-compatible provider**: The chat calls are plain
+  `POST {baseUrl}/chat/completions` with `Authorization: Bearer <key>`.
+- **Visibility**: The AI Helper menu item appears when `useAiAccess()` says
+  `canUse` — master with a key or the proxy, or any admin when
+  `ai_helper_access` = 'admins' and the proxy is enabled. Use
+  `useAiSettingsEvent()` for the cheap encrypted-key existence check (no
+  decryption) and `useAiSettings()` for the decrypted values.
+- **Error Handling**: Handle `isLoading` and `error` states appropriately.
 
 ## Implementation Patterns and Best Practices
 
@@ -259,10 +355,10 @@ const handleStreamingResponse = async () => {
   let streamedContent = ''; // ✅ Use local variable to accumulate content
 
   try {
-    await sendStreamingMessage(messages, model, (chunk) => {
+    await sendStreamingMessage(messages, (chunk) => {
       streamedContent += chunk; // ✅ Accumulate in local variable
       setCurrentStreamingMessage(streamedContent); // Update UI
-    });
+    }, model);
 
     // ✅ Save accumulated content to persistent state
     if (streamedContent.trim()) {
@@ -309,19 +405,21 @@ function AIChatWithErrorBoundary() {
 
 // In your AI component, handle specific error types gracefully:
 function useAIWithErrorHandling() {
-  const { sendChatMessage, error, clearError } = useShakespeare();
+  const { sendChatMessage, error, clearError } = useAiChat();
 
   const sendMessage = async (messages: ChatMessage[], modelId: string) => {
     try {
       await sendChatMessage(messages, modelId);
     } catch (err) {
       // Handle specific error types with user-friendly messages
-      if (err.message.includes('401')) {
-        throw new Error('Authentication failed. Please log in again.');
-      } else if (err.message.includes('402')) {
-        throw new Error('Insufficient credits. Please add credits to use premium features.');
-      } else if (err.message.includes('network')) {
-        throw new Error('Network error. Please check your internet connection.');
+      if (err instanceof Error) {
+        if (err.message.includes('401') || err.message.includes('Authentication')) {
+          throw new Error('Authentication failed. Check the API key in Admin Settings.');
+        } else if (err.message.includes('Rate limited')) {
+          throw new Error('Too many requests. Please wait and try again.');
+        } else if (err.message.includes('Network')) {
+          throw new Error('Network error. Please check your internet connection.');
+        }
       }
       throw err; // Re-throw for error boundary
     }

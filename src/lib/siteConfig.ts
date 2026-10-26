@@ -41,6 +41,7 @@ export function buildSiteConfigTags(c: Partial<SiteConfig> = {}): string[][] {
     ['homepage_section_order', JSON.stringify(c.homepageSectionOrder?.length ? c.homepageSectionOrder : [...BUILTIN_HOMEPAGE_SECTION_IDS])],
     ['read_only_admin_access', (c.readOnlyAdminAccess ?? false).toString()],
     ['auto_harvest_24h', (c.autoHarvest24h ?? false).toString()],
+    ['ai_helper_access', c.aiHelperAccess ?? 'master'],
     ['updated_at', Math.floor(Date.now() / 1000).toString()],
   ];
 }

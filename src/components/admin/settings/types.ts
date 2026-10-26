@@ -43,6 +43,8 @@ export interface SiteConfig {
   nip19Gateway?: string;
   readOnlyAdminAccess: boolean;
   autoHarvest24h?: boolean;
+  /** Who may use the AI Helper: 'master' (default) or 'admins' (all nostr.json admins, via the server proxy). */
+  aiHelperAccess?: 'master' | 'admins';
   updatedAt?: number;
 }
 
@@ -111,6 +113,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   homepageSectionOrder: [...BUILTIN_HOMEPAGE_SECTION_IDS],
   readOnlyAdminAccess: false,
   autoHarvest24h: false,
+  aiHelperAccess: 'master',
 };
 
 /**

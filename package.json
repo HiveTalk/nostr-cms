@@ -126,6 +126,7 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react-swc": "^4.3.3",
     "@webbtc/webln-types": "^3.0.0",
     "autoprefixer": "^10.6.1",

@@ -370,6 +370,9 @@ export default function AdminSettings() {
         const autoHarvest24h = eventTags.find(([name]) => name === 'auto_harvest_24h')?.[1];
         if (autoHarvest24h !== undefined) loadedConfig.autoHarvest24h = autoHarvest24h === 'true';
 
+        const aiHelperAccess = eventTags.find(([name]) => name === 'ai_helper_access')?.[1];
+        if (aiHelperAccess === 'master' || aiHelperAccess === 'admins') loadedConfig.aiHelperAccess = aiHelperAccess;
+
         const maxEvents = eventTags.find(([name]) => name === 'max_events')?.[1];
         if (maxEvents !== undefined) loadedConfig.maxEvents = parseInt(maxEvents);
 

@@ -268,7 +268,7 @@
 - `src/pages/StaticPage.tsx:87` (Blossom fetch)
 - `src/components/admin/MediaSelectorDialog.tsx:143`
 - `src/components/admin/AdminMedia.tsx:315`
-- `src/hooks/useShakespeare.ts` (multiple fetches)
+- `src/hooks/useAiChat.ts` (multiple fetches)
 
 **Recommendations:**
 - Add AbortSignal with timeout to all fetch calls

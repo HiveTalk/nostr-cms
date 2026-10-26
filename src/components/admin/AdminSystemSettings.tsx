@@ -20,6 +20,7 @@ import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { getDefaultRelayUrl, getSiteConfigDTag } from '@/lib/relay';
 import { buildSiteConfigTags } from '@/lib/siteConfig';
 import { BUILTIN_HOMEPAGE_SECTION_IDS } from '@/components/admin/settings/types';
+import { AiSettingsSection } from '@/components/admin/settings/AiSettingsSection';
 
 interface SiteConfig {
   title: string;
@@ -44,6 +45,7 @@ interface SiteConfig {
   sectionOrder?: string[];
   readOnlyAdminAccess: boolean;
   autoHarvest24h?: boolean;
+  aiHelperAccess?: 'master' | 'admins';
   updatedAt?: number;
 }
 
@@ -258,6 +260,9 @@ export default function AdminSystemSettings() {
         const autoHarvest24h = eventTags.find(([name]) => name === 'auto_harvest_24h')?.[1];
         if (autoHarvest24h !== undefined) loadedConfig.autoHarvest24h = autoHarvest24h === 'true';
 
+        const aiHelperAccess = eventTags.find(([name]) => name === 'ai_helper_access')?.[1];
+        if (aiHelperAccess === 'master' || aiHelperAccess === 'admins') loadedConfig.aiHelperAccess = aiHelperAccess;
+
         const maxEvents = eventTags.find(([name]) => name === 'max_events')?.[1];
         if (maxEvents !== undefined) loadedConfig.maxEvents = parseInt(maxEvents);
 
@@ -443,6 +448,7 @@ export default function AdminSystemSettings() {
           ['homepage_section_order', JSON.stringify([...BUILTIN_HOMEPAGE_SECTION_IDS])],
           ['read_only_admin_access', 'false'],
           ['auto_harvest_24h', 'false'],
+          ['ai_helper_access', 'master'],
           ['updated_at', Math.floor(Date.now() / 1000).toString()],
         ];
 
@@ -583,6 +589,9 @@ export default function AdminSystemSettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* AI Assistant (encrypted remote key storage, master only) */}
+      <AiSettingsSection isMasterUser={isMasterUser} />
 
       {/* Admin User Management */}
       <Card>

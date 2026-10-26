@@ -25,6 +25,17 @@ VITE_DEFAULT_RELAY=
 VITE_MASTER_PUBKEY=
 ```
 
+Optional — only needed to share the AI Helper with all admins (serverless proxy keeps the key server-side):
+
+```sh
+# OpenAI-compatible provider key for the /api/ai/* proxy (server-only, never VITE_*)
+AI_API_KEY=
+
+# Optional provider base URL + default model for the proxy
+AI_BASE_URL=
+AI_MODEL=
+```
+
 A comprehensive meetup or small organization and event management system built with React, TypeScript, and Nostr. This project provides both an admin CMS for content management and a public-facing website for community engagement.
 
 ## Features
@@ -55,10 +66,11 @@ A comprehensive meetup or small organization and event management system built w
 - **Responsive Design**: Mobile-friendly interface with light/dark mode support.
 
 ### AI Integration
-- **Shakespeare API**: Built-in `useShakespeare` hook for integrating AI chat completions.
+- **OpenAI-Compatible Providers**: Built-in `useAiChat` hook works with any OpenAI-style chat API — the master user supplies the base URL and API key.
+- **Encrypted Key Storage**: A personal API key is stored as a NIP-44/NIP-04 encrypted Nostr event on your relay, roaming across devices without ever being exposed.
+- **Shared Admin Access**: The master user can optionally grant every site admin access to the AI Helper. In that mode, calls go through a serverless proxy (`/api/ai/*`) that authenticates callers with NIP-98 and holds the provider key in a server-only `AI_API_KEY` env var — it is never bundled into the frontend.
 - **Streaming Support**: Support for streaming AI responses.
 - **Model Selection**: Dynamic model discovery and selection.
-- **Nostr Authentication**: Secure authentication with the AI provider using Nostr keys.
 
 ## Technical Stack
 
@@ -71,7 +83,7 @@ A comprehensive meetup or small organization and event management system built w
 - **TanStack Query**: Data fetching and state management.
 - **Blossom**: Media and static content storage.
 - **WebLN**: Lightning Network integration for zaps.
-- **Shakespeare AI**: AI chat completion API integration.
+- **AI Helper**: Optional admin assistant backed by any OpenAI-compatible LLM API.
 
 ## Configuration
 
@@ -207,7 +219,7 @@ Users can send Bitcoin via Lightning Network zaps to authors of blog posts and e
 
 The project includes specialized documentation in the `docs/` directory:
 
-- **[AI Chat](docs/AI_CHAT.md)**: Implementation guide for AI chat interfaces using the Shakespeare API.
+- **[AI Chat](docs/AI_CHAT.md)**: Implementation guide for the AI Helper and `useAiChat` hook against OpenAI-compatible providers.
 - **[Nostr Direct Messages](docs/NOSTR_DIRECT_MESSAGES.md)**: Guide for implementing NIP-04 and NIP-17 direct messaging.
 - **[Nostr Comments](docs/NOSTR_COMMENTS.md)**: Guide for comment systems.
 - **[Infinite Scroll](docs/NOSTR_INFINITE_SCROLL.md)**: Guide for feed interfaces.

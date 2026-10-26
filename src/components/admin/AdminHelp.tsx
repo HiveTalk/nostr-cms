@@ -24,11 +24,15 @@ import {
   LayoutDashboard,
   Users,
   UserRoundCog,
+  Bot,
   ExternalLink
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { isUnifiedSetup } from '@/lib/relay';
 
 export default function AdminHelp() {
+  const unified = isUnifiedSetup();
+
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       <div className="flex flex-col gap-2">
@@ -241,19 +245,21 @@ export default function AdminHelp() {
                   </td>
                 </tr>
 
-                {/* Manage Relay Access */}
-                <tr>
-                  <td className="px-4 py-4 flex items-center gap-2 font-medium">
-                    <Shield className="h-4 w-4 text-purple-500" />
-                    Manage Relay Access
-                  </td>
-                  <td className="px-4 py-4 text-center border-l">
-                    <CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" />
-                  </td>
-                  <td className="px-4 py-4 text-center border-l" colSpan={3}>
-                    <XCircle className="h-5 w-5 text-muted-foreground/30 mx-auto" />
-                  </td>
-                </tr>
+                {/* Manage Relay Access — hidden unless CMS and relay share a domain */}
+                {unified && (
+                  <tr>
+                    <td className="px-4 py-4 flex items-center gap-2 font-medium">
+                      <Shield className="h-4 w-4 text-purple-500" />
+                      Manage Relay Access
+                    </td>
+                    <td className="px-4 py-4 text-center border-l">
+                      <CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" />
+                    </td>
+                    <td className="px-4 py-4 text-center border-l" colSpan={3}>
+                      <XCircle className="h-5 w-5 text-muted-foreground/30 mx-auto" />
+                    </td>
+                  </tr>
+                )}
 
                 {/* Content Creation */}
                 {[
@@ -367,6 +373,7 @@ export default function AdminHelp() {
         <CardContent className="space-y-4">
           {[
             { icon: LayoutDashboard, name: 'Dashboard', desc: 'Overview of your site: recent events, blog posts, notes, and quick stats.' },
+            { icon: Bot, name: 'AI Helper', desc: 'Chat with an OpenAI-compatible LLM provider. Appears once an API key is saved in Admin Settings → AI Assistant, or when the master user shares it with all admins via a server-side key.' },
             { icon: MessageCircle, name: 'Notes', desc: 'Create and manage short-form Nostr notes (Kind 1). Search notes by content. Published notes appear on the homepage feed if enabled.' },
             { icon: FileText, name: 'Blog Posts', desc: 'Create and manage long-form blog posts (Kind 30023). Filter by published/drafts. Search by username.' },
             { icon: Clock, name: 'Scheduled', desc: 'View and manage scheduled content posts that will be published automatically at a future time. Appears only when the scheduler is running.' },
@@ -378,7 +385,7 @@ export default function AdminHelp() {
             { icon: Database, name: 'Relay Explorer', desc: 'Browse raw Nostr events stored on your relay. Master user only. Inspect event kinds, tags, and content directly.' },
             { icon: RefreshCw, name: 'Sync Content', desc: 'Backfill events from external relays into your local relay using paginated sync. Useful for migrating content from another relay. Available to all admins.' },
             { icon: Users, name: 'Follow Backup', desc: 'Back up, restore, and recover your Nostr follow list (Kind 3). Create encrypted backups on the relay, export to a JSON file, recover from other relays or the relay archive, and sync your current list to other relays. Available to all logged-in users.' },
-            { icon: UserRoundCog, name: 'Manage Relay Access', desc: 'Manage who can publish to your relay. Add or remove pubkeys from the relay access list. Master user only, on unified setups.' },
+            ...(unified ? [{ icon: UserRoundCog, name: 'Manage Relay Access', desc: 'Manage who can publish to your relay. Add or remove pubkeys from the relay access list. Master user only, on unified setups.' }] : []),
             { icon: Rss, name: 'Feed Settings', desc: 'Configure the community feed sources. Add npubs manually or from your nostr.json directory. Toggle reading from publish relays. Enable showing the feed on the homepage.' },
             { icon: Shield, name: 'Site Settings', desc: 'Configure your site: title, logo, hero section (title, subtitle, background type, banner, text color), navigation menu, content display toggles (events, blog, feed), and hero buttons.' },
             { icon: Lock, name: 'Admin Settings', desc: 'System-level settings: admin roles, relay configuration, read-only admin access toggle, and reset to defaults. Master user only.' },

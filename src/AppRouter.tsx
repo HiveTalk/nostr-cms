@@ -24,6 +24,7 @@ import AdminScheduledPage from "./pages/admin/AdminScheduledPage";
 import AdminFormsPage from "./pages/admin/AdminFormsPage";
 import AdminSyncPage from "./pages/admin/AdminSyncPage";
 import AdminRelayAccessPage from "./pages/admin/AdminRelayAccessPage";
+import AdminAiChatPage from "./pages/admin/AdminAiChatPage";
 import AdminExplorerPage from "./pages/admin/AdminExplorerPage";
 import AdminFollowBackupPage from "./pages/admin/AdminFollowBackupPage";
 
@@ -71,6 +72,7 @@ export function AppRouter() {
         {/* Admin routes */}
         <Route path="/admin" element={<AdminRoutes />}>
           <Route index element={<AdminPage />} />
+          <Route path="ai" element={<AdminAiChatPage />} />
           <Route path="notes" element={<AdminNotesPage />} />
           <Route path="blog" element={<AdminBlogPage />} />
           <Route path="scheduled" element={<AdminScheduledPage />} />
