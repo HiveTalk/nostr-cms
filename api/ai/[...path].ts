@@ -112,32 +112,51 @@ async function getAiHelperAccess(master: string): Promise<'master' | 'admins'> {
   }
 }
 
-/** NIP-98 verify: kind 27235, valid sig, fresh timestamp, matching u/method/payload tags. */
-function verifyNip98(req: VercelRequest, rawBody: Buffer): string | null {
+/**
+ * NIP-98 verify: kind 27235, valid sig, fresh timestamp, matching
+ * u/method/payload tags. Returns the caller pubkey, or a short reason string
+ * ('nip98:*') describing which check failed — surfaced in the 401 body for
+ * debugging and admin UX, safe to expose (no secrets).
+ */
+function verifyNip98(req: VercelRequest, rawBody: Buffer): { pubkey: string } | { reason: string } {
   const auth = req.headers['authorization'];
-  if (typeof auth !== 'string' || !auth.startsWith('Nostr ')) return null;
+  if (typeof auth !== 'string' || !auth.startsWith('Nostr ')) {
+    return { reason: 'missing_auth_header' };
+  }
 
   let event: NostrEvent;
   try {
     event = JSON.parse(Buffer.from(auth.slice(6), 'base64').toString('utf8'));
   } catch {
-    return null;
+    return { reason: 'malformed_auth_event' };
   }
 
-  if (event.kind !== 27235 || !verifyEvent(event)) return null;
-  if (Math.abs(Math.floor(Date.now() / 1000) - event.created_at) > NIP98_MAX_AGE_SEC) return null;
+  if (event.kind !== 27235) return { reason: 'wrong_kind' };
+  if (!verifyEvent(event)) return { reason: 'bad_signature' };
+  if (Math.abs(Math.floor(Date.now() / 1000) - event.created_at) > NIP98_MAX_AGE_SEC) {
+    return { reason: 'stale_timestamp' };
+  }
 
   const tag = (name: string) => event.tags.find(([n]) => n === name)?.[1];
   const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
   const expectedUrl = `${proto}://${req.headers.host}${req.url}`;
-  if (tag('u') !== expectedUrl) return null;
-  if ((tag('method') || '').toUpperCase() !== (req.method || 'GET').toUpperCase()) return null;
-  if (rawBody.length > 0) {
-    const payloadHash = createHash('sha256').update(rawBody).digest('hex');
-    if (tag('payload') !== payloadHash) return null;
+  if (tag('u') !== expectedUrl) return { reason: `url_mismatch expected ${expectedUrl}` };
+  if ((tag('method') || '').toUpperCase() !== (req.method || 'GET').toUpperCase()) {
+    return { reason: 'method_mismatch' };
   }
 
-  return event.pubkey?.toLowerCase();
+  const payloadTag = tag('payload');
+  if (payloadTag) {
+    // Accept the raw stream body OR the platform-parsed body reserialized —
+    // depends on whether the runtime pre-parses JSON bodies.
+    const candidates: Buffer[] = [rawBody];
+    if (typeof req.body === 'string') candidates.push(Buffer.from(req.body));
+    else if (req.body && typeof req.body === 'object') candidates.push(Buffer.from(JSON.stringify(req.body)));
+    const ok = candidates.some((b) => b.length > 0 && createHash('sha256').update(b).digest('hex') === payloadTag);
+    if (!ok) return { reason: 'payload_mismatch' };
+  }
+
+  return { pubkey: (event.pubkey || '').toLowerCase() };
 }
 
 async function readBody(req: IncomingMessage): Promise<Buffer> {
@@ -146,15 +165,17 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function authorize(req: VercelRequest, rawBody: Buffer): Promise<boolean> {
-  const pubkey = verifyNip98(req, rawBody);
-  if (!pubkey) return false;
+async function authorize(req: VercelRequest, rawBody: Buffer): Promise<{ ok: boolean; reason?: string }> {
+  const verified = verifyNip98(req, rawBody);
+  if ('reason' in verified) return { ok: false, reason: `nip98:${verified.reason}` };
 
   const dir = await getAdminDirectory();
-  if (pubkey === dir.master) return true;
+  if (verified.pubkey === dir.master) return { ok: true };
+  if (!dir.admins.has(verified.pubkey)) return { ok: false, reason: 'not_in_admin_directory' };
 
   const access = await getAiHelperAccess(dir.master);
-  return access === 'admins' && dir.admins.has(pubkey);
+  if (access !== 'admins') return { ok: false, reason: 'access_master_only' };
+  return { ok: true };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -187,14 +208,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  let allowed = false;
+  let allowed: { ok: boolean; reason?: string };
   try {
     allowed = await authorize(req, rawBody);
   } catch {
     return res.status(503).json({ error: 'could not verify admin status' });
   }
-  if (!allowed) {
-    return res.status(401).json({ error: 'unauthorized' });
+  if (!allowed.ok) {
+    return res.status(401).json({ error: 'unauthorized', details: allowed.reason });
   }
 
   try {

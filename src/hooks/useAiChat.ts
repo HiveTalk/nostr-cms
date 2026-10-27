@@ -77,7 +77,7 @@ async function handleAPIError(response: Response) {
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new Error('Authentication failed. Check that the API key saved in Admin Settings is correct.');
+    throw new Error(`Authentication failed.${detail ? ` ${detail}` : ' Check that the API key saved in Admin Settings is correct.'}`);
   } else if (response.status === 404) {
     throw new Error('Endpoint not found. Check the API base URL in Admin Settings.');
   } else if (response.status === 429) {
