@@ -65,6 +65,7 @@ const AppConfigSchema = z.object({
     excludedBlossomRelays: z.array(z.string()).optional(),
     updatedAt: z.number().optional(),
     readOnlyAdminAccess: z.boolean().optional(),
+    aiHelperAccess: z.enum(['master', 'admins']).optional(),
     autoHarvest24h: z.boolean().optional(),
   }).optional(),
   navigation: z.array(z.object({
