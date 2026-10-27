@@ -139,8 +139,18 @@ function verifyNip98(req: VercelRequest, rawBody: Buffer): { pubkey: string } | 
 
   const tag = (name: string) => event.tags.find(([n]) => n === name)?.[1];
   const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
-  const expectedUrl = `${proto}://${req.headers.host}${req.url}`;
-  if (tag('u') !== expectedUrl) return { reason: `url_mismatch expected ${expectedUrl}` };
+  // Vercel rewrites req.url internally, appending the catch-all param as a
+  // query string (e.g. "/api/ai/models?...path=models"). The client signs the
+  // clean URL — accept both the full req.url and the query-stripped pathname.
+  const pathname = (req.url || '').split('?')[0];
+  const urlCandidates = [
+    `${proto}://${req.headers.host}${pathname}`,
+    `${proto}://${req.headers.host}${req.url}`,
+  ];
+  const uTag = tag('u') || '';
+  if (!urlCandidates.includes(uTag)) {
+    return { reason: `url_mismatch expected ${urlCandidates[0]}` };
+  }
   if ((tag('method') || '').toUpperCase() !== (req.method || 'GET').toUpperCase()) {
     return { reason: 'method_mismatch' };
   }
