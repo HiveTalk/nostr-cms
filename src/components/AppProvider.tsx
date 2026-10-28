@@ -59,11 +59,13 @@ const AppConfigSchema = z.object({
     sectionOrder: z.array(z.string()).optional(),
     homepageSectionOrder: z.array(z.string()).optional(),
     feedNpubs: z.array(z.string()).optional(),
+    blogNpubs: z.array(z.string()).optional(),
     feedReadFromPublishRelays: z.boolean().optional(),
     blossomRelays: z.array(z.string()).optional(),
     excludedBlossomRelays: z.array(z.string()).optional(),
     updatedAt: z.number().optional(),
     readOnlyAdminAccess: z.boolean().optional(),
+    aiHelperAccess: z.enum(['master', 'admins']).optional(),
     autoHarvest24h: z.boolean().optional(),
   }).optional(),
   navigation: z.array(z.object({

@@ -9,7 +9,10 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
+import { useXStatus } from '@/hooks/useXAccount';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { useAiAccess } from '@/hooks/useAiSettings';
+import { isUnifiedSetup } from '@/lib/relay';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard,
@@ -35,6 +38,8 @@ import {
   Rss,
   KeyRound,
   User,
+  Bot,
+  Share2,
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -50,6 +55,7 @@ export default function AdminLayout() {
   const { config } = useAppContext();
   const { isAdmin, isMaster: isMasterUser, isLoading: authLoading } = useAdminAuth(user?.pubkey);
   const { data: isSchedulerHealthy } = useSchedulerHealth();
+  const { data: xStatus } = useXStatus();
   const { nostr } = useDefaultRelay();
   const queryClient = useQueryClient();
 
@@ -92,8 +98,20 @@ export default function AdminLayout() {
   // logged-in pubkey against nostr.json's "_" entry.
   const canAccessExplorer = !authLoading && isMasterUser;
 
+  // The AI Helper appears when the user can chat: master with a personal
+  // key or the server proxy, or any admin when ai_helper_access = 'admins'.
+  const { canUse: canUseAi } = useAiAccess();
+  const showAiHelper = canUseAi;
+
+  // Relay access management only works when CMS and relay share a domain.
+  const showRelayAccess = canAccessExplorer && isUnifiedSetup();
+
+  // Crossposting needs a Swarm relay new enough to expose /api/x endpoints.
+  const showCrossposting = xStatus?.available === true;
+
   const navigation = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    ...(showAiHelper ? [{ name: 'AI Helper', href: '/admin/ai', icon: Bot }] : []),
     { name: 'Notes', href: '/admin/notes', icon: MessageCircle },
     { name: 'Blog Posts', href: '/admin/blog', icon: FileText },
     ...(isSchedulerHealthy ? [{ name: 'Scheduled', href: '/admin/scheduled', icon: Clock }] : []),
@@ -104,8 +122,9 @@ export default function AdminLayout() {
     { name: 'Pages', href: '/admin/pages', icon: FileCode },
     { name: 'Feed', href: '/admin/feed', icon: Rss },
     ...(canAccessExplorer ? [{ name: 'Relay Explorer', href: '/admin/explorer', icon: Database }] : []),
-    ...(canAccessExplorer ? [{ name: 'Relay Access', href: '/admin/relay-access', icon: KeyRound }] : []),
+    ...(showRelayAccess ? [{ name: 'Relay Access', href: '/admin/relay-access', icon: KeyRound }] : []),
     { name: 'Sync Content', href: '/admin/sync-content', icon: RefreshCw },
+    ...(showCrossposting ? [{ name: 'Crossposting', href: '/admin/crosspost', icon: Share2 }] : []),
     { name: 'Follow Backup', href: '/admin/follow-backup', icon: Users },
     ...(canAccessSettings ? [
       { name: 'Site Settings', href: '/admin/settings', icon: Settings },

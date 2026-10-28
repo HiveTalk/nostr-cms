@@ -28,12 +28,14 @@ export interface SiteConfig {
   showBlog: boolean;
   showFeed: boolean;
   feedNpubs: string[];
+  blogNpubs: string[];
   feedReadFromPublishRelays: boolean;
   maxEvents: number;
   maxBlogPosts: number;
   maxFeedNotes: number;
   defaultRelay: string;
   publishRelays: string[];
+  blossomRelays: string[];
   adminRoles: Record<string, 'publisher' | 'user'>;
   tweakcnThemeUrl?: string;
   sectionOrder?: string[];
@@ -41,6 +43,8 @@ export interface SiteConfig {
   nip19Gateway?: string;
   readOnlyAdminAccess: boolean;
   autoHarvest24h?: boolean;
+  /** Who may use the AI Helper: 'master' (default) or 'admins' (all nostr.json admins, via the server proxy). */
+  aiHelperAccess?: 'master' | 'admins';
   updatedAt?: number;
 }
 
@@ -94,12 +98,14 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   showBlog: true,
   showFeed: false,
   feedNpubs: [],
+  blogNpubs: [],
   feedReadFromPublishRelays: false,
   maxEvents: 6,
   maxBlogPosts: 3,
   maxFeedNotes: 5,
   defaultRelay: '',
   publishRelays: [],
+  blossomRelays: [],
   adminRoles: {},
   tweakcnThemeUrl: '',
   nip19Gateway: 'https://nostr.at',
@@ -107,6 +113,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   homepageSectionOrder: [...BUILTIN_HOMEPAGE_SECTION_IDS],
   readOnlyAdminAccess: false,
   autoHarvest24h: false,
+  aiHelperAccess: 'master',
 };
 
 /**

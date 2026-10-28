@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { nip19 } from 'nostr-tools';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,8 @@ import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { useToast } from '@/hooks/useToast';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
-import { getSwarmAdminApiUrl, isUnifiedSetup, getSiteConfigDTag } from '@/lib/relay';
+import { getSwarmAdminApiUrl, isUnifiedSetup } from '@/lib/relay';
+import { buildSiteConfigTags } from '@/lib/siteConfig';
 import { nip98Fetch } from '@/lib/nip98';
 import { AlertTriangle, RefreshCw, ShieldAlert, Trash2, UserPlus, Crown } from 'lucide-react';
 
@@ -116,32 +117,7 @@ export default function AdminRelayAccess() {
       }));
 
       // Publish the updated site config as a 30078 event
-      const scopedDTag = getSiteConfigDTag();
-      const configTags = [
-        ['d', scopedDTag],
-        ['title', currentConfig.title || ''],
-        ['logo', currentConfig.logo || ''],
-        ['favicon', currentConfig.favicon || ''],
-        ['og_image', currentConfig.ogImage || ''],
-        ['hero_title', currentConfig.heroTitle || ''],
-        ['hero_subtitle', currentConfig.heroSubtitle || ''],
-        ['hero_background', currentConfig.heroBackground || ''],
-        ['hero_buttons', JSON.stringify(currentConfig.heroButtons || [])],
-        ['show_events', (currentConfig.showEvents ?? true).toString()],
-        ['show_blog', (currentConfig.showBlog ?? true).toString()],
-        ['max_events', (currentConfig.maxEvents ?? 6).toString()],
-        ['max_blog_posts', (currentConfig.maxBlogPosts ?? 3).toString()],
-        ['default_relay', currentConfig.defaultRelay || ''],
-        ['publish_relays', JSON.stringify(currentConfig.publishRelays || [])],
-        ['admin_roles', JSON.stringify(updatedAdminRoles)],
-        ['feed_npubs', JSON.stringify(currentConfig.feedNpubs || [])],
-        ['feed_read_from_publish_relays', (currentConfig.feedReadFromPublishRelays ?? false).toString()],
-        ['tweakcn_theme_url', currentConfig.tweakcnThemeUrl || ''],
-        ['nip19_gateway', currentConfig.nip19Gateway || 'https://nostr.at'],
-        ['section_order', JSON.stringify(currentConfig.sectionOrder || [])],
-        ['read_only_admin_access', (currentConfig.readOnlyAdminAccess ?? false).toString()],
-        ['updated_at', Math.floor(Date.now() / 1000).toString()],
-      ];
+      const configTags = buildSiteConfigTags({ ...currentConfig, adminRoles: updatedAdminRoles });
 
       await publishEvent({
         event: {
@@ -180,18 +156,78 @@ export default function AdminRelayAccess() {
   // Each request is individually NIP-98-signed by the user's signer —
   // replaces the cookie-session flow (which POSTed a bare pubkey to /login
   // with no proof of key possession). Writes sign like reads.
+  //
+  // Backends that predate NIP-98 admin auth reject signed requests with 401 —
+  // fall back to the session-cookie flow so the panel keeps working until the
+  // relay is upgraded. The mode is remembered per base so legacy backends
+  // don't trigger a signing prompt on every request.
+  const sessionBackedBases = useRef<Set<string>>(new Set());
+
+  const ensureAdminSession = useCallback(async (base: string): Promise<void> => {
+    if (!user?.pubkey) throw new Error('Please login with the primary owner key first');
+
+    // Current backend: challenge -> sign a kind-27235 event whose content is
+    // the challenge -> POST {event} to establish the session cookie.
+    try {
+      const challengeResponse = await fetch(`${base}/challenge`, { credentials: 'include' });
+      if (challengeResponse.ok) {
+        const { challenge, kind } = (await challengeResponse.json()) as { challenge?: string; kind?: number };
+        if (challenge) {
+          const event = await user.signer.signEvent({
+            kind: kind ?? 27235,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [],
+            content: challenge,
+          });
+          const loginResponse = await fetch(`${base}/login`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event }),
+          });
+          if (loginResponse.ok) return;
+        }
+      }
+    } catch {
+      // Fall through to the legacy login below.
+    }
+
+    // Legacy backend predating challenge login: bare pubkey POST.
+    const loginResponse = await fetch(`${base}/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pubkey: user.pubkey.toLowerCase().trim() }),
+    });
+    if (!loginResponse.ok) throw new Error(await parseError(loginResponse));
+  }, [user]);
+
   const fetchAdminApi = useCallback(async (path: string, init?: RequestInit): Promise<Response> => {
     if (!user?.pubkey) throw new Error('Please login with the primary owner key first');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     for (let index = 0; index < adminApiBases.length; index++) {
       const base = adminApiBases[index];
-      const response = await nip98Fetch(`${base}${normalizedPath}`, init, user);
+      let response: Response;
+      if (sessionBackedBases.current.has(base)) {
+        response = await fetch(`${base}${normalizedPath}`, { credentials: 'include', ...init });
+        if (response.status === 401) {
+          await ensureAdminSession(base);
+          response = await fetch(`${base}${normalizedPath}`, { credentials: 'include', ...init });
+        }
+      } else {
+        response = await nip98Fetch(`${base}${normalizedPath}`, init, user);
+        if (response.status === 401) {
+          await ensureAdminSession(base);
+          response = await fetch(`${base}${normalizedPath}`, { credentials: 'include', ...init });
+          if (response.status !== 401) sessionBackedBases.current.add(base);
+        }
+      }
       if (response.status !== 404 || index === adminApiBases.length - 1) {
         return response;
       }
     }
     throw new Error('Unable to reach relay admin API');
-  }, [adminApiBases, user]);
+  }, [adminApiBases, ensureAdminSession, user]);
 
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => {

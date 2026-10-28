@@ -186,6 +186,9 @@ After restarting your app:
 | `VITE_REMOTE_NOSTR_JSON_URL` | URL to remote `nostr.json` for admin authentication | `https://example.com/.well-known/nostr.json` |
 | `VITE_DEFAULT_RELAY` | Primary relay for reading content | `wss://relay.damus.io` |
 | `VITE_MASTER_PUBKEY` | Hex pubkey of the site owner (primary admin) | `3878d95db7b854c3...` |
+| `AI_API_KEY` | Optional: OpenAI-compatible provider key. Powers the `/api/ai/*` serverless proxy (shared AI Helper for admins) and local tooling — never bundled into the frontend. See `docs/AI_CHAT.md` | `sk-...` |
+| `AI_BASE_URL` | Optional: provider base URL for the server proxy | `https://gateway.trytokenfactory.dev/v1` |
+| `AI_MODEL` | Optional: default model advertised by the proxy | `glm-5.3-flash` |
 
 ### Optional Variables (Scheduled Posts)
 

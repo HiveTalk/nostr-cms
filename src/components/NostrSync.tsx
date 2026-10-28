@@ -201,6 +201,16 @@ export function NostrSync() {
             }
           }
 
+          const blogNpubsTag = eventTags.find(([name]) => name === 'blog_npubs')?.[1];
+          if (blogNpubsTag) {
+            try {
+              const parsed = JSON.parse(blogNpubsTag);
+              if (Array.isArray(parsed)) loadedConfig.blogNpubs = parsed;
+            } catch (e) {
+              console.warn('[NostrSync] Failed to parse blog_npubs', e);
+            }
+          }
+
           const feedReadTag = eventTags.find(([name]) => name === 'feed_read_from_publish_relays')?.[1];
           if (feedReadTag !== undefined) loadedConfig.feedReadFromPublishRelays = feedReadTag === 'true';
 
@@ -209,6 +219,9 @@ export function NostrSync() {
 
           const autoHarvestTag = eventTags.find(([name]) => name === 'auto_harvest_24h')?.[1];
           if (autoHarvestTag !== undefined) loadedConfig.autoHarvest24h = autoHarvestTag === 'true';
+
+          const aiAccessTag = eventTags.find(([name]) => name === 'ai_helper_access')?.[1];
+          if (aiAccessTag === 'master' || aiAccessTag === 'admins') loadedConfig.aiHelperAccess = aiAccessTag;
 
           const nip19Gateway = eventTags.find(([name]) => name === 'nip19_gateway')?.[1];
           if (nip19Gateway !== undefined) loadedConfig.nip19Gateway = nip19Gateway;

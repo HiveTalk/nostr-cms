@@ -36,6 +36,8 @@ export interface AppConfig {
     showBlog?: boolean;
     showFeed?: boolean;
     feedNpubs?: string[];
+    /** When set, only these authors' blog posts (kind 30023) appear on public pages. Empty = master + publishers. */
+    blogNpubs?: string[];
     feedReadFromPublishRelays?: boolean;
     maxEvents?: number;
     maxBlogPosts?: number;
@@ -62,6 +64,8 @@ export interface AppConfig {
     zaplyticsSectionOrder?: string[];
     /** Whether admin settings are read-only for non-master admins */
     readOnlyAdminAccess?: boolean;
+    /** Who may use the AI Helper: 'master' only or all 'admins' (via the server proxy) */
+    aiHelperAccess?: 'master' | 'admins';
     /** Whether automatic 24h media harvesting is enabled (daily cron + immediate run) */
     autoHarvest24h?: boolean;
     /** Last time the site config was updated from/to Nostr */

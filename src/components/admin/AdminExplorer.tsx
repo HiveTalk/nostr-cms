@@ -161,16 +161,76 @@ function useAdminApi() {
   // Each request is individually NIP-98-signed by the user's signer —
   // replaces the cookie-session flow (which POSTed a bare pubkey to /login
   // with no proof of key possession).
+  //
+  // Backends that predate NIP-98 admin auth reject signed requests with 401 —
+  // fall back to the session-cookie flow so the panel keeps working until the
+  // relay is upgraded. The mode is remembered per base so legacy backends
+  // don't trigger a signing prompt on every request.
+  const sessionBackedBases = useRef<Set<string>>(new Set());
+
+  const ensureAdminSession = useCallback(async (base: string): Promise<void> => {
+    if (!user?.pubkey) throw new Error('Please login with the primary owner key first');
+
+    // Current backend: challenge -> sign a kind-27235 event whose content is
+    // the challenge -> POST {event} to establish the session cookie.
+    try {
+      const challengeResponse = await fetch(`${base}/challenge`, { credentials: 'include' });
+      if (challengeResponse.ok) {
+        const { challenge, kind } = (await challengeResponse.json()) as { challenge?: string; kind?: number };
+        if (challenge) {
+          const event = await user.signer.signEvent({
+            kind: kind ?? 27235,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [],
+            content: challenge,
+          });
+          const loginResponse = await fetch(`${base}/login`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event }),
+          });
+          if (loginResponse.ok) return;
+        }
+      }
+    } catch {
+      // Fall through to the legacy login below.
+    }
+
+    // Legacy backend predating challenge login: bare pubkey POST.
+    const loginResponse = await fetch(`${base}/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pubkey: user.pubkey.toLowerCase().trim() }),
+    });
+    if (!loginResponse.ok) throw new Error(await parseError(loginResponse));
+  }, [user]);
+
   const fetchAdminApi = useCallback(async (path: string): Promise<Response> => {
     if (!user) throw new Error('Please login with the primary owner key first');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     for (let index = 0; index < adminApiBases.length; index++) {
       const base = adminApiBases[index];
-      const response = await nip98Fetch(`${base}${normalizedPath}`, {}, user);
+      let response: Response;
+      if (sessionBackedBases.current.has(base)) {
+        response = await fetch(`${base}${normalizedPath}`, { credentials: 'include' });
+        if (response.status === 401) {
+          await ensureAdminSession(base);
+          response = await fetch(`${base}${normalizedPath}`, { credentials: 'include' });
+        }
+      } else {
+        response = await nip98Fetch(`${base}${normalizedPath}`, {}, user);
+        if (response.status === 401) {
+          await ensureAdminSession(base);
+          response = await fetch(`${base}${normalizedPath}`, { credentials: 'include' });
+          if (response.status !== 401) sessionBackedBases.current.add(base);
+        }
+      }
       if (response.status !== 404 || index === adminApiBases.length - 1) return response;
     }
     throw new Error('Unable to reach relay admin API');
-  }, [adminApiBases, user]);
+  }, [adminApiBases, ensureAdminSession, user]);
 
   return { fetchAdminApi, nostr, user };
 }

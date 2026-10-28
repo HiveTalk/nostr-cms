@@ -13,7 +13,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
-import { getMasterPubkey, getSiteConfigDTag } from '@/lib/relay';
+import { getMasterPubkey } from '@/lib/relay';
+import { buildSiteConfigTags } from '@/lib/siteConfig';
 import { formatPubkey } from '@/lib/utils';
 import { useAuthor } from '@/hooks/useAuthor';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -116,29 +117,7 @@ export default function AdminFeed() {
       };
 
       // We need to publish the entire site config because it's a replaceable event
-      const scopedDTag = getSiteConfigDTag();
-      const configTags = [
-        ['d', scopedDTag],
-        ['title', updatedConfig.title || ''],
-        ['logo', updatedConfig.logo || ''],
-        ['favicon', updatedConfig.favicon || ''],
-        ['og_image', updatedConfig.ogImage || ''],
-        ['hero_title', updatedConfig.heroTitle || ''],
-        ['hero_subtitle', updatedConfig.heroSubtitle || ''],
-        ['hero_background', updatedConfig.heroBackground || ''],
-        ['show_events', (updatedConfig.showEvents ?? true).toString()],
-        ['show_blog', (updatedConfig.showBlog ?? true).toString()],
-        ['max_events', (updatedConfig.maxEvents ?? 6).toString()],
-        ['max_blog_posts', (updatedConfig.maxBlogPosts ?? 3).toString()],
-        ['default_relay', updatedConfig.defaultRelay || ''],
-        ['publish_relays', JSON.stringify(updatedConfig.publishRelays || [])],
-        ['admin_roles', JSON.stringify(updatedConfig.adminRoles || {})],
-        ['feed_npubs', JSON.stringify(feedNpubs)],
-        ['feed_read_from_publish_relays', readFromPublishRelays.toString()],
-        ['tweakcn_theme_url', updatedConfig.tweakcnThemeUrl || ''],
-        ['section_order', JSON.stringify(updatedConfig.sectionOrder || [])],
-        ['updated_at', updatedConfig.updatedAt.toString()],
-      ];
+      const configTags = buildSiteConfigTags(updatedConfig);
 
       await publishEvent({
         event: {
