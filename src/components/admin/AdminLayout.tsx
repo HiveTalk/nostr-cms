@@ -9,6 +9,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
+import { useXStatus } from '@/hooks/useXAccount';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useAiAccess } from '@/hooks/useAiSettings';
 import { isUnifiedSetup } from '@/lib/relay';
@@ -38,6 +39,7 @@ import {
   KeyRound,
   User,
   Bot,
+  Share2,
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -53,6 +55,7 @@ export default function AdminLayout() {
   const { config } = useAppContext();
   const { isAdmin, isMaster: isMasterUser, isLoading: authLoading } = useAdminAuth(user?.pubkey);
   const { data: isSchedulerHealthy } = useSchedulerHealth();
+  const { data: xStatus } = useXStatus();
   const { nostr } = useDefaultRelay();
   const queryClient = useQueryClient();
 
@@ -103,6 +106,9 @@ export default function AdminLayout() {
   // Relay access management only works when CMS and relay share a domain.
   const showRelayAccess = canAccessExplorer && isUnifiedSetup();
 
+  // Crossposting needs a Swarm relay new enough to expose /api/x endpoints.
+  const showCrossposting = xStatus?.available === true;
+
   const navigation = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
     ...(showAiHelper ? [{ name: 'AI Helper', href: '/admin/ai', icon: Bot }] : []),
@@ -118,6 +124,7 @@ export default function AdminLayout() {
     ...(canAccessExplorer ? [{ name: 'Relay Explorer', href: '/admin/explorer', icon: Database }] : []),
     ...(showRelayAccess ? [{ name: 'Relay Access', href: '/admin/relay-access', icon: KeyRound }] : []),
     { name: 'Sync Content', href: '/admin/sync-content', icon: RefreshCw },
+    ...(showCrossposting ? [{ name: 'Crossposting', href: '/admin/crosspost', icon: Share2 }] : []),
     { name: 'Follow Backup', href: '/admin/follow-backup', icon: Users },
     ...(canAccessSettings ? [
       { name: 'Site Settings', href: '/admin/settings', icon: Settings },

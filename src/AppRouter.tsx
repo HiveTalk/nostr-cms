@@ -27,6 +27,7 @@ import AdminRelayAccessPage from "./pages/admin/AdminRelayAccessPage";
 import AdminAiChatPage from "./pages/admin/AdminAiChatPage";
 import AdminExplorerPage from "./pages/admin/AdminExplorerPage";
 import AdminFollowBackupPage from "./pages/admin/AdminFollowBackupPage";
+import AdminCrosspostPage from "./pages/admin/AdminCrosspostPage";
 
 // Public pages
 import EventsPage from "./pages/EventsPage";
@@ -82,6 +83,7 @@ export function AppRouter() {
           <Route path="pages" element={<AdminPagesPage />} />
           <Route path="forms" element={<AdminFormsPage />} />
           <Route path="sync-content" element={<AdminSyncPage />} />
+          <Route path="crosspost" element={<AdminCrosspostPage />} />
           <Route path="follow-backup" element={<AdminFollowBackupPage />} />
           <Route path="relay-access" element={<AdminRelayAccessPage />} />
           <Route path="settings" element={<AdminSettingsPage />} />
