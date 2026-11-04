@@ -3,8 +3,6 @@
 Architecture overview for the combined CMS + relay setup: [docs/MEETUP_SPACE_ARCHITECTURE.md](./docs/MEETUP_SPACE_ARCHITECTURE.md)
 
 Use the [Super Easy Setup Guide for separate components](https://setupcms.hivetalk.org/)
-or 
-[One Shot integrated CMS + Relay](https://oneshot.hivetalk.org/)
 
 or
 
