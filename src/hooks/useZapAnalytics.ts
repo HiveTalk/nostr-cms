@@ -1040,8 +1040,10 @@ export function useZapAnalytics(timeRange: TimeRange = '7d', customRange?: Custo
       const totalEarnings = parsedZaps.reduce((sum, zap) => sum + zap.amount, 0);
       const totalZaps = parsedZaps.length;
 
-      // Calculate unique zappers count by getting all unique pubkeys
-      const uniqueZapperPubkeys = new Set(parsedZaps.map(zap => zap.zapper.pubkey));
+      // Calculate unique zappers count by getting all unique pubkeys —
+      // anonymous zaps (no zap request) share one bucket rather than
+      // each counting as their LNURL server's key.
+      const uniqueZapperPubkeys = new Set(parsedZaps.map(zap => zap.zapper.anonymous ? '__anonymous__' : zap.zapper.pubkey));
       const uniqueZappers = uniqueZapperPubkeys.size;
 
       const earningsByPeriod = groupZapsByPeriod(parsedZaps, timeRange, customRange);
