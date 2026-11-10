@@ -264,7 +264,10 @@ function useMemberProfiles(pubkeys: string[]): Map<string, { name?: string; pict
 
   const queries = useQueries({
     queries: pubkeys.map((pubkey) => ({
-      queryKey: ['author', pubkey],
+      // Must NOT share 'author' with useAuthor — that hook caches
+      // {event, metadata} under the same key and would poison this
+      // lookup with the wrong shape (member avatars never resolved).
+      queryKey: ['member-profile', pubkey],
       queryFn: async ({ signal }: { signal: AbortSignal }) => {
         if (!pubkey) return null;
         let [event] = await queryWithNip65Fanout(
