@@ -166,8 +166,10 @@ function formatPeriodLabel(period: string, timeRange: TimeRange, customRange?: C
       } else if (daysDiff <= 7) {
         // Day format for ranges up to a month
         return (date.getUTCMonth() + 1) + '/' + date.getUTCDate();
-      } else if (daysDiff <= 30) {
-        // Week format for ranges up to 3 months
+      } else if (daysDiff <= 90) {
+        // Week-start format — groupZapsByPeriod buckets 31–90 day ranges
+        // weekly, so the label must show the day or every week in a month
+        // renders identically ("Mar 26").
         return date.toLocaleDateString('en-US', { 
           month: 'short', 
           day: 'numeric',
@@ -206,11 +208,14 @@ function getGroupByLabel(timeRange: TimeRange, customRange?: CustomDateRange): s
   if (timeRange === 'custom' && customRange) {
     const daysDiff = Math.ceil((customRange.to.getTime() - customRange.from.getTime()) / (1000 * 60 * 60 * 24));
     
+    // Thresholds must match groupZapsByPeriod's bucketing exactly —
+    // 8–31 day ranges are daily buckets (not weekly) and 32–90 day
+    // ranges are weekly (not monthly).
     if (daysDiff <= 2) {
       return 'hour';
-    } else if (daysDiff <= 7) {
+    } else if (daysDiff <= 31) {
       return 'day';
-    } else if (daysDiff <= 30) {
+    } else if (daysDiff <= 90) {
       return 'week';
     } else {
       return 'month';
