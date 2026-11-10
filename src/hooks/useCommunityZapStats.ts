@@ -349,7 +349,7 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
           name: member.name || '',
           totalEarnings: zaps.reduce((s, z) => s + z.amount, 0),
           totalZaps: zaps.length,
-          uniqueZappers: new Set(zaps.map((z) => z.zapper.pubkey)).size,
+          uniqueZappers: new Set(zaps.map((z) => z.zapper.anonymous ? "__anonymous__" : z.zapper.pubkey)).size,
           topContentSats: top?.totalSats || 0,
           topContentPreview: (top?.content || '').slice(0, 100),
           earningsByPeriod: groupZapsByPeriod(zaps, tr, custom),
@@ -365,7 +365,7 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
       const aggregate: AnalyticsData = {
         totalEarnings: communityZaps.reduce((s, z) => s + z.amount, 0),
         totalZaps: communityZaps.length,
-        uniqueZappers: new Set(communityZaps.map((z) => z.zapper.pubkey)).size,
+        uniqueZappers: new Set(communityZaps.map((z) => z.zapper.anonymous ? "__anonymous__" : z.zapper.pubkey)).size,
         period: 'community',
         earningsByPeriod: groupZapsByPeriod(communityZaps, tr, custom),
         topContent: groupZapsByContent(communityZaps).slice(0, 5),

@@ -321,6 +321,10 @@ function buildGraph(members: MemberStats[]): { nodes: GraphNode[]; edges: GraphE
 
   for (const member of membersWithZaps) {
     for (const zapper of member.topZappers!) {
+      // The anonymous bucket isn't a real sender — joining members on it
+      // would fabricate a shared multi-member supporter from unrelated
+      // requestless zaps. Amounts still count in earnings elsewhere.
+      if (zapper.anonymous) continue;
       if (!zapperMembers.has(zapper.pubkey)) {
         zapperMembers.set(zapper.pubkey, new Set());
         zapperSats.set(zapper.pubkey, 0);

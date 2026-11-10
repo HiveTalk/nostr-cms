@@ -72,6 +72,7 @@ export function parseZapReceipt(zapEvent: ZapReceipt): ParsedZap | null {
       zapRequest,
       zapper: {
         pubkey: zapRequest?.pubkey || zapEvent.pubkey,
+        anonymous: !zapRequest,
       },
     };
 
@@ -405,16 +406,24 @@ export function getTopZappers(zaps: ParsedZap[]): ZapperStats[] {
   const grouped = new Map<string, ZapperStats>();
 
   zaps.forEach(zap => {
-    const existing = grouped.get(zap.zapper.pubkey);
+    // Anonymous zaps (no zap request in the receipt) would otherwise credit
+    // the LNURL server's key — group them under one labeled bucket instead.
+    const key = zap.zapper.anonymous ? '__anonymous__' : zap.zapper.pubkey;
+    const existing = grouped.get(key);
     if (existing) {
       existing.totalSats += zap.amount;
       existing.zapCount += 1;
     } else {
-      grouped.set(zap.zapper.pubkey, {
-        pubkey: zap.zapper.pubkey,
-        name: zap.zapper.name,
-        nip05: zap.zapper.nip05,
-        picture: zap.zapper.picture,
+      grouped.set(key, {
+        pubkey: key,
+        name: zap.zapper.anonymous ? 'Anonymous' : zap.zapper.name,
+        // Anonymous bucket gets only aggregate counts + a neutral label —
+        // propagating the LNURL server's nip05/picture would dress a
+        // service's profile up as the unknown sender.
+        ...(zap.zapper.anonymous ? { anonymous: true } : {
+          nip05: zap.zapper.nip05,
+          picture: zap.zapper.picture,
+        }),
         totalSats: zap.amount,
         zapCount: 1,
       });
@@ -589,8 +598,11 @@ export function analyzeZapperLoyalty(zaps: ParsedZap[]): import('@/types/zaplyti
     zapCount: number;
   }>();
 
-  // Group zaps by zapper
+  // Group zaps by zapper — skip unknown senders: loyalty is unknowable for
+  // receipts without a zap request, and folding them into one entity would
+  // fabricate a whale/regular "supporter" that doesn't exist.
   zaps.forEach(zap => {
+    if (zap.zapper.anonymous) return;
     const existing = zapperData.get(zap.zapper.pubkey);
     if (existing) {
       existing.zaps.push(zap);
