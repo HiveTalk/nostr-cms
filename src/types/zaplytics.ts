@@ -99,7 +99,7 @@ export interface ZapperLoyalty {
 
 export interface LoyaltyStats {
   newZappers: number;
-  returningZappers: number;
+  repeatZappers: number;
   regularSupporters: number;
   averageLifetimeValue: number;
   topLoyalZappers: ZapperLoyalty[];

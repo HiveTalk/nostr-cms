@@ -68,7 +68,7 @@ export function ZapperLoyalty({ data, isLoading }: ZapperLoyaltyProps) {
     );
   }
 
-  const totalZappers = data.newZappers + data.returningZappers;
+  const totalZappers = data.newZappers + data.repeatZappers;
 
   if (totalZappers === 0) {
     return (
@@ -83,7 +83,7 @@ export function ZapperLoyalty({ data, isLoading }: ZapperLoyaltyProps) {
     );
   }
 
-  const loyaltyRate = totalZappers > 0 ? (data.returningZappers / totalZappers) * 100 : 0;
+  const loyaltyRate = totalZappers > 0 ? (data.repeatZappers / totalZappers) * 100 : 0;
 
   return (
     <Card>
@@ -150,10 +150,10 @@ export function ZapperLoyalty({ data, isLoading }: ZapperLoyaltyProps) {
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Returning supporters</span>
-              <span className="text-sm font-medium">{data.returningZappers}</span>
+              <span className="text-sm font-medium">{data.repeatZappers}</span>
             </div>
             <Progress 
-              value={totalZappers > 0 ? (data.returningZappers / totalZappers) * 100 : 0} 
+              value={totalZappers > 0 ? (data.repeatZappers / totalZappers) * 100 : 0} 
               className="h-2"
             />
           </div>

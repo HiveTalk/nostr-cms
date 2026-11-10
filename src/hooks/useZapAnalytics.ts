@@ -993,7 +993,7 @@ export function useZapAnalytics(timeRange: TimeRange = '7d', customRange?: Custo
           },
           zapperLoyalty: {
             newZappers: 0,
-            returningZappers: 0,
+            repeatZappers: 0,
             regularSupporters: 0,
             averageLifetimeValue: 0,
             topLoyalZappers: [],

@@ -610,7 +610,7 @@ export function analyzeZapperLoyalty(zaps: ParsedZap[]): import('@/types/zaplyti
 
   const loyaltyAnalysis: import('@/types/zaplytics').ZapperLoyalty[] = [];
   let newZappers = 0;
-  let returningZappers = 0;
+  let repeatZappers = 0;
   let regularSupporters = 0;
 
   zapperData.forEach(zapperInfo => {
@@ -634,7 +634,7 @@ export function analyzeZapperLoyalty(zaps: ParsedZap[]): import('@/types/zaplyti
       category = 'one-time';
       newZappers++;
     } else {
-      returningZappers++;
+      repeatZappers++;
       
       if (zapperInfo.totalSats >= 10000) { // 10k+ sats = whale
         category = 'whale';
@@ -674,7 +674,7 @@ export function analyzeZapperLoyalty(zaps: ParsedZap[]): import('@/types/zaplyti
 
   return {
     newZappers,
-    returningZappers,
+    repeatZappers,
     regularSupporters,
     averageLifetimeValue,
     topLoyalZappers,
