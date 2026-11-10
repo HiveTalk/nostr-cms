@@ -30,6 +30,8 @@ interface MentionCandidate {
   handle?: string;
   /** Pre-fetched display name from a kind 0 profile (relay search results). */
   displayName?: string;
+  /** kind-0 `name` (kept separate from displayName for search). */
+  name?: string;
   /** Pre-fetched avatar URL from a kind 0 profile (relay search results). */
   picture?: string;
   /** NIP-05 identifier from search results or author metadata. */
@@ -148,7 +150,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
   /** Highlighted index for keyboard nav within the filtered list. */
   const [activeIdx, setActiveIdx] = useState(0);
 
-  const { data: usersData } = useNostrJsonUsers();
+  const { data: usersData, isFetching: usersLoading } = useNostrJsonUsers();
 
   /** Stable candidate pool: nostr.json users + recently-mentioned, deduped. */
   const candidates = useMemo<MentionCandidate[]>(() => {
@@ -184,6 +186,28 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
 
   const { data: searchResults, isFetching: isSearching } = useMentionSearch(debouncedSearch);
 
+  // True while typed text hasn't reached the search yet — either still in
+  // the 250ms debounce window or a fetch is in flight. Gates "No matching
+  // users" so it can't flash between keystrokes/requests.
+  const searchPending = isSearching || deferredQuery.trim() !== debouncedSearch;
+
+  // The whitelist (nostr.json) pool loads async on its own — "No matching
+  // users" can't be trusted until it has settled too, or a late-arriving
+  // local match pops in right after the verdict.
+  const poolsPending = usersLoading;
+
+  // Grace period before showing "No matching users": an intermediate prefix
+  // can settle with zero results while the user is still typing toward the
+  // real query — show the verdict only once the query has been stable and
+  // fully searched for a beat.
+  const [showNoMatch, setShowNoMatch] = useState(false);
+  useEffect(() => {
+    setShowNoMatch(false);
+    if (searchPending || poolsPending || !deferredQuery.trim()) return;
+    const id = setTimeout(() => setShowNoMatch(true), 400);
+    return () => clearTimeout(id);
+  }, [searchPending, poolsPending, deferredQuery]);
+
   /** External candidates from relay search, mapped to MentionCandidate shape. */
   const externalCandidates = useMemo<MentionCandidate[]>(() => {
     if (!searchResults) return [];
@@ -194,6 +218,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
         pubkey: r.pubkey,
         npub: r.npub,
         displayName: r.displayName || r.name,
+        name: r.name,
         picture: r.picture,
         nip05: r.nip05,
         external: true,
@@ -209,7 +234,23 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
       const handle = (c.handle || '').toLowerCase();
       const name = (c.displayName || '').toLowerCase();
       const nip05 = (c.nip05 || '').toLowerCase();
-      return handle.includes(q) || name.includes(q) || nip05.includes(q) || c.npub.toLowerCase().includes(q);
+      // Complete bech32 identities (npub1… / nprofile1…, optionally
+      // nostr:-prefixed) match by decoded pubkey — the resolved user may
+      // carry no name fields at all. Partial strings never decode, so
+      // substring noise stays out.
+      if (/^(nostr:)?(npub1|nprofile1)/i.test(q)) {
+        try {
+          const decoded = nip19.decode(q.replace(/^nostr:/, ''));
+          const pk =
+            decoded.type === 'npub' ? decoded.data
+            : decoded.type === 'nprofile' ? decoded.data.pubkey
+            : '';
+          if (pk === c.pubkey) return true;
+        } catch {
+          // not a complete/valid entity — fall through to text match
+        }
+      }
+      return handle.includes(q) || name.includes(q) || (c.name || '').toLowerCase().includes(q) || nip05.includes(q);
     };
 
     if (!q) return candidates.slice(0, 20);
@@ -421,11 +462,11 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
           >
             {filtered.length === 0 ? (
               <div className="py-3 text-center text-sm text-muted-foreground">
-                {isSearching
-                  ? 'Searching relays…'
-                  : deferredQuery.trim()
+                {!deferredQuery.trim()
+                  ? 'Type a name to search…'
+                  : showNoMatch
                     ? 'No matching users'
-                    : 'Type a name to search…'}
+                    : 'Searching relays…'}
               </div>
             ) : (
               filtered.map((c, i) => (
@@ -449,6 +490,11 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
                   <CandidateRow candidate={c} />
                 </button>
               ))
+            )}
+            {searchPending && filtered.length > 0 && (
+              <div className="py-2 text-center text-xs text-muted-foreground">
+                Searching relays…
+              </div>
             )}
           </div>,
           document.body,
