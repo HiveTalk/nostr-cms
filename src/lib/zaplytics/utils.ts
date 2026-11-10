@@ -334,14 +334,15 @@ function snapToPeriodStart(date: Date, groupBy: 'hour' | 'day' | 'week' | 'month
 /**
  * Group zaps by content/event
  */
+function isFetchedEvent(zap: ParsedZap): boolean {
+  return !zap.zappedEvent || !!zap.zappedEvent.content || zap.zappedEvent.created_at !== 0;
+}
+
 export function groupZapsByContent(zaps: ParsedZap[]): EarningsByContent[] {
   const grouped = new Map<string, EarningsByContent>();
 
   zaps.forEach(zap => {
-    if (!zap.zappedEvent) return;
-    // Skip entries where the zapped event wasn't actually fetched
-    // (empty content + epoch date means we only have the event ID from the e tag)
-    if (!zap.zappedEvent.content && zap.zappedEvent.created_at === 0) return;
+    if (!zap.zappedEvent || !isFetchedEvent(zap)) return;
 
     const existing = grouped.get(zap.zappedEvent.id);
     if (existing) {
@@ -377,7 +378,7 @@ export function groupZapsByKind(zaps: ParsedZap[]): EarningsByKind[] {
     // default to kind 1 and would inflate that bucket (same guard as
     // groupZapsByContent). Counting only attributed zaps also keeps the
     // percentages summing to 100.
-    if (!zap.zappedEvent.content && zap.zappedEvent.created_at === 0) return;
+    if (!zap.zappedEvent || !isFetchedEvent(zap)) return;
 
     totalSats += zap.amount;
     const kind = zap.zappedEvent.kind;
@@ -698,8 +699,7 @@ export function analyzeContentPerformance(zaps: ParsedZap[]): import('@/types/za
 
   // Group zaps by content
   zaps.forEach(zap => {
-    if (!zap.zappedEvent) return;
-    if (!zap.zappedEvent.content && zap.zappedEvent.created_at === 0) return;
+    if (!zap.zappedEvent || !isFetchedEvent(zap)) return;
     
     const existing = contentData.get(zap.zappedEvent.id);
     if (existing) {
