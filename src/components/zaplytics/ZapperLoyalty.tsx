@@ -149,7 +149,7 @@ export function ZapperLoyalty({ data, isLoading }: ZapperLoyaltyProps) {
           
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Returning supporters</span>
+              <span className="text-sm text-muted-foreground">Repeat supporters</span>
               <span className="text-sm font-medium">{data.repeatZappers}</span>
             </div>
             <Progress 
