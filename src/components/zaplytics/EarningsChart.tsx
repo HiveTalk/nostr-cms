@@ -166,8 +166,10 @@ function formatPeriodLabel(period: string, timeRange: TimeRange, customRange?: C
       } else if (daysDiff <= 7) {
         // Day format for ranges up to a month
         return (date.getUTCMonth() + 1) + '/' + date.getUTCDate();
-      } else if (daysDiff <= 30) {
-        // Week format for ranges up to 3 months
+      } else if (daysDiff <= 90) {
+        // Week-start format — groupZapsByPeriod buckets 31–90 day ranges
+        // weekly, so the label must show the day or every week in a month
+        // renders identically ("Mar 26").
         return date.toLocaleDateString('en-US', { 
           month: 'short', 
           day: 'numeric',
