@@ -275,8 +275,12 @@ function useMemberProfiles(pubkeys: string[]): Map<string, { name?: string; pict
       queryFn: async ({ signal }: { signal: AbortSignal }) => {
         if (!pubkey) return null;
         // Reuse a cached useAuthor result instead of refetching — the
-        // member table already loads the same profiles.
-        const cached = queryClient.getQueryData<{ metadata?: { name?: string; display_name?: string; picture?: string } }>(['author', pubkey]);
+        // member table already loads the same profiles. Skip it when the
+        // entry was invalidated (e.g. profile edit): getQueryData still
+        // returns the pre-invalidation data while it waits to refetch.
+        const cacheState = queryClient.getQueryState(['author', pubkey]);
+        const cached = cacheState?.isInvalidated ? undefined
+          : queryClient.getQueryData<{ metadata?: { name?: string; display_name?: string; picture?: string } }>(['author', pubkey]);
         if (cached?.metadata) return cached.metadata;
         let [event] = await queryWithNip65Fanout(
           nostr,
