@@ -234,6 +234,22 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
       const handle = (c.handle || '').toLowerCase();
       const name = (c.displayName || '').toLowerCase();
       const nip05 = (c.nip05 || '').toLowerCase();
+      // Complete bech32 identities (npub1… / nprofile1…, optionally
+      // nostr:-prefixed) match by decoded pubkey — the resolved user may
+      // carry no name fields at all. Partial strings never decode, so
+      // substring noise stays out.
+      if (/^(nostr:)?(npub1|nprofile1)/i.test(q)) {
+        try {
+          const decoded = nip19.decode(q.replace(/^nostr:/, ''));
+          const pk =
+            decoded.type === 'npub' ? decoded.data
+            : decoded.type === 'nprofile' ? decoded.data.pubkey
+            : '';
+          if (pk === c.pubkey) return true;
+        } catch {
+          // not a complete/valid entity — fall through to text match
+        }
+      }
       return handle.includes(q) || name.includes(q) || (c.name || '').toLowerCase().includes(q) || nip05.includes(q);
     };
 
