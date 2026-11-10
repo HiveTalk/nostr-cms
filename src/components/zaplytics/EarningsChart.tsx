@@ -208,11 +208,14 @@ function getGroupByLabel(timeRange: TimeRange, customRange?: CustomDateRange): s
   if (timeRange === 'custom' && customRange) {
     const daysDiff = Math.ceil((customRange.to.getTime() - customRange.from.getTime()) / (1000 * 60 * 60 * 24));
     
+    // Thresholds must match groupZapsByPeriod's bucketing exactly —
+    // 8–31 day ranges are daily buckets (not weekly) and 32–90 day
+    // ranges are weekly (not monthly).
     if (daysDiff <= 2) {
       return 'hour';
-    } else if (daysDiff <= 7) {
+    } else if (daysDiff <= 31) {
       return 'day';
-    } else if (daysDiff <= 30) {
+    } else if (daysDiff <= 90) {
       return 'week';
     } else {
       return 'month';
