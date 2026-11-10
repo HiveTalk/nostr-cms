@@ -398,7 +398,9 @@ function buildGraph(members: MemberStats[]): { nodes: GraphNode[]; edges: GraphE
     // Bigger radius if we have a picture to show
     const baseRadius = hasPic ? 14 : (memberCount_ > 1 ? zapperRadius + 3 : zapperRadius);
     return {
-      id: pubkey,
+      // Prefixed id: a member can also be a zapper (e.g. the relay's own
+      // key) and bare-pubkey ids then collide in React's key list.
+      id: `zapper:${pubkey}`,
       label: zapperNames.get(pubkey) || '[Anonymous]',
       type: 'zapper',
       x: centerX + Math.cos(angle) * ringRadius,
@@ -422,7 +424,7 @@ function buildGraph(members: MemberStats[]): { nodes: GraphNode[]; edges: GraphE
       const zapper = member?.topZappers?.find(z => z.pubkey === zapperPubkey);
       if (zapper) {
         edges.push({
-          source: zapperPubkey,
+          source: `zapper:${zapperPubkey}`,
           target: memberPubkey,
           sats: zapper.totalSats,
           zapCount: zapper.zapCount,
