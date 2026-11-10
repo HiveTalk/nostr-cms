@@ -72,7 +72,7 @@ export function parseZapReceipt(zapEvent: ZapReceipt): ParsedZap | null {
       zapRequest,
       zapper: {
         pubkey: zapRequest?.pubkey || zapEvent.pubkey,
-        anonymous: !zapRequest,
+        anonymous: !zapRequest?.pubkey,
       },
     };
 

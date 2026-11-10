@@ -353,7 +353,11 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
           topContentSats: top?.totalSats || 0,
           topContentPreview: (top?.content || '').slice(0, 100),
           earningsByPeriod: groupZapsByPeriod(zaps, tr, custom),
-          topZappers: getTopZappers(zaps).slice(0, 5),
+          // Graph list: top-5 identified zappers. Filter the anonymous
+          // bucket BEFORE slicing so an aggregate of requestless receipts
+          // can't displace a real supporter. (The community aggregate keeps
+          // the bucket — member.topZappers feeds only the network graph.)
+          topZappers: getTopZappers(zaps).filter((z) => !z.anonymous).slice(0, 5),
         };
       }).sort((a, b) => b.totalEarnings - a.totalEarnings);
 
