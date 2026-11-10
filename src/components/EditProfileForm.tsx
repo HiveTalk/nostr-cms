@@ -111,6 +111,9 @@ export const EditProfileForm: React.FC = () => {
       // Invalidate queries to refresh the data
       queryClient.invalidateQueries({ queryKey: ['logins'] });
       queryClient.invalidateQueries({ queryKey: ['author', user.pubkey] });
+      // The contributor graph caches member profiles under its own key —
+      // drop it too or the edited avatar stays stale on next graph mount.
+      queryClient.invalidateQueries({ queryKey: ['member-profile', user.pubkey] });
 
       toast({
         title: 'Success',
