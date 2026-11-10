@@ -165,18 +165,20 @@ function formatPeriodLabel(period: string, timeRange: TimeRange, customRange?: C
         return date.getHours().toString().padStart(2, '0') + ':00';
       } else if (daysDiff <= 7) {
         // Day format for ranges up to a month
-        return (date.getMonth() + 1) + '/' + date.getDate();
+        return (date.getUTCMonth() + 1) + '/' + date.getUTCDate();
       } else if (daysDiff <= 30) {
         // Week format for ranges up to 3 months
         return date.toLocaleDateString('en-US', { 
           month: 'short', 
-          day: 'numeric'
+          day: 'numeric',
+          timeZone: 'UTC'
         });
       } else {
         // Month format for longer ranges
         return date.toLocaleDateString('en-US', { 
           month: 'short', 
-          year: '2-digit' 
+          year: '2-digit',
+          timeZone: 'UTC'
         });
       }
     }
@@ -185,11 +187,12 @@ function formatPeriodLabel(period: string, timeRange: TimeRange, customRange?: C
       case '24h':
         return date.getHours().toString().padStart(2, '0') + ':00';
       case '7d':
-        return (date.getMonth() + 1) + '/' + date.getDate();
+        return (date.getUTCMonth() + 1) + '/' + date.getUTCDate();
       case 'all':
         return date.toLocaleDateString('en-US', {
           month: 'short',
-          year: '2-digit'
+          year: '2-digit',
+          timeZone: 'UTC'
         });
       default:
         return period;

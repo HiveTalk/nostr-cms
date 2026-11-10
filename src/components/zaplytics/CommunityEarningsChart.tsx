@@ -195,7 +195,7 @@ function formatMonthLabel(monthKey: string): string {
 function formatDayLabel(dayKey: string): string {
   try {
     const date = new Date(dayKey + 'T00:00:00Z');
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   } catch {
     return dayKey;
   }
