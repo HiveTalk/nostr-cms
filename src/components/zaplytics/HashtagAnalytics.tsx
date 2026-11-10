@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Hash, Zap, TrendingUp, Target, Clock } from 'lucide-react';
+import { Hash, Zap, Target, Clock } from 'lucide-react';
 import type { HashtagPerformance } from '@/types/zaplytics';
 import { formatSats } from '@/lib/zaplytics/utils';
 
@@ -136,10 +136,9 @@ export function HashtagAnalytics({ data, isLoading }: HashtagAnalyticsProps) {
                       <Clock className="h-3 w-3" />
                       {formatTimeToFirstZap(hashtag.avgTimeToFirstZap)} response
                     </div>
-                    <div className="flex items-center gap-1">
-                      <TrendingUp className="h-3 w-3" />
-                      {hashtag.successRate.toFixed(0)}% success
-                    </div>
+                    {/* successRate intentionally not displayed — only
+                        zapped posts are tracked, so it's always 100% and
+                        meaningless. Real rate needs all-posts data. */}
                   </div>
                 </div>
 
