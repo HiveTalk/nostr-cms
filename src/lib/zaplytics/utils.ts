@@ -107,14 +107,32 @@ export function isValidZapReceipt(event: NostrEvent): event is ZapReceipt {
   return amount > 0;
 }
 
+// Custom-range contract: a Date at local midnight is a picker calendar
+// date; anything else is a precise timestamp (rolling windows, "now").
+// Bounds semantics — `since` is the `from` instant (a calendar `from` is
+// already its day's start); `until` is the `to` instant, expanded to the
+// last second of its day only when `to` is a calendar date so the picker's
+// end day counts without pushing rolling windows into the future.
+const isMidnightLocal = (d: Date): boolean =>
+  d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
+
+const startOfLocalDay = (d: Date): Date =>
+  new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+const endOfLocalDay = (d: Date): Date =>
+  new Date(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - 1);
+
 /**
  * Get date range for a time period
  */
 export function getDateRange(timeRange: TimeRange, customRange?: CustomDateRange): { since: number; until?: number } {
   if (timeRange === 'custom' && customRange) {
-    // For custom range, use the provided dates
-    const since = Math.floor(customRange.from.getTime() / 1000);
-    const until = Math.floor(customRange.to.getTime() / 1000);
+    const since = Math.floor(
+      (isMidnightLocal(customRange.from) ? startOfLocalDay(customRange.from) : customRange.from).getTime() / 1000,
+    );
+    const until = Math.floor(
+      (isMidnightLocal(customRange.to) ? endOfLocalDay(customRange.to) : customRange.to).getTime() / 1000,
+    );
     return { since, until };
   }
   
@@ -152,36 +170,39 @@ export function groupZapsByPeriod(zaps: ParsedZap[], timeRange: TimeRange, custo
     }
   }
 
-  // Helper: get the period key and start date for a given Date
+  // Helper: get the period key and start date for a given Date.
+  // Everything is UTC — keys are toISOString()-derived, and using local
+  // components for periodDate produced buckets whose key and date
+  // disagreed off-UTC (duplicated/misaligned chart entries).
   const getPeriod = (date: Date): { key: string; periodDate: Date } => {
     switch (groupBy) {
       case 'hour':
         return {
           key: date.toISOString().slice(0, 13) + ':00:00.000Z',
-          periodDate: new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours()),
+          periodDate: new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours())),
         };
       case 'day':
         return {
           key: date.toISOString().slice(0, 10),
-          periodDate: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+          periodDate: new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())),
         };
       case 'week': {
         const weekStart = new Date(date);
-        weekStart.setDate(date.getDate() - date.getDay());
+        weekStart.setUTCDate(date.getUTCDate() - date.getUTCDay());
         return {
           key: weekStart.toISOString().slice(0, 10),
-          periodDate: new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()),
+          periodDate: new Date(Date.UTC(weekStart.getUTCFullYear(), weekStart.getUTCMonth(), weekStart.getUTCDate())),
         };
       }
       case 'month':
         return {
           key: date.toISOString().slice(0, 7),
-          periodDate: new Date(date.getFullYear(), date.getMonth(), 1),
+          periodDate: new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)),
         };
       default:
         return {
           key: date.toISOString().slice(0, 10),
-          periodDate: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+          periodDate: new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())),
         };
     }
   };
@@ -227,8 +248,11 @@ function fillPeriodGaps(
   let rangeEnd: Date;
 
   if (timeRange === 'custom' && customRange) {
-    rangeStart = customRange.from;
-    rangeEnd = customRange.to;
+    rangeStart = isMidnightLocal(customRange.from) ? startOfLocalDay(customRange.from) : customRange.from;
+    // Calendar dates (midnight-local `to`) fill through the last instant of
+    // the end day; precise `to` values (rolling windows) stay exact —
+    // expanding those could project the chart into a future UTC day.
+    rangeEnd = isMidnightLocal(customRange.to) ? endOfLocalDay(customRange.to) : customRange.to;
   } else if (timeRange === 'all') {
     // For all-time, use the oldest and newest zap dates
     const dates = Array.from(grouped.values()).map(g => g.date);
@@ -253,31 +277,31 @@ function fillPeriodGaps(
     switch (groupBy) {
       case 'hour':
         key = current.toISOString().slice(0, 13) + ':00:00.000Z';
-        periodDate = new Date(current.getFullYear(), current.getMonth(), current.getDate(), current.getHours());
+        periodDate = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate(), current.getUTCHours()));
         current = new Date(current.getTime() + 60 * 60 * 1000); // +1 hour
         break;
       case 'day':
         key = current.toISOString().slice(0, 10);
-        periodDate = new Date(current.getFullYear(), current.getMonth(), current.getDate());
-        current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1); // +1 day
+        periodDate = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate()));
+        current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() + 1)); // +1 day
         break;
       case 'week': {
         const weekStart = new Date(current);
-        weekStart.setDate(current.getDate() - current.getDay());
+        weekStart.setUTCDate(current.getUTCDate() - current.getUTCDay());
         key = weekStart.toISOString().slice(0, 10);
-        periodDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
-        current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 7); // +1 week
+        periodDate = new Date(Date.UTC(weekStart.getUTCFullYear(), weekStart.getUTCMonth(), weekStart.getUTCDate()));
+        current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() + 7)); // +1 week
         break;
       }
       case 'month':
         key = current.toISOString().slice(0, 7);
-        periodDate = new Date(current.getFullYear(), current.getMonth(), 1);
-        current = new Date(current.getFullYear(), current.getMonth() + 1, 1); // +1 month
+        periodDate = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1));
+        current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 1)); // +1 month
         break;
       default:
         key = current.toISOString().slice(0, 10);
-        periodDate = new Date(current.getFullYear(), current.getMonth(), current.getDate());
-        current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1);
+        periodDate = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate()));
+        current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() + 1));
     }
 
     if (!grouped.has(key)) {
@@ -292,18 +316,18 @@ function fillPeriodGaps(
 function snapToPeriodStart(date: Date, groupBy: 'hour' | 'day' | 'week' | 'month'): Date {
   switch (groupBy) {
     case 'hour':
-      return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours());
+      return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours()));
     case 'day':
-      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
     case 'week': {
       const d = new Date(date);
-      d.setDate(d.getDate() - d.getDay());
-      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
     }
     case 'month':
-      return new Date(date.getFullYear(), date.getMonth(), 1);
+      return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
     default:
-      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   }
 }
 
@@ -345,11 +369,17 @@ export function groupZapsByContent(zaps: ParsedZap[]): EarningsByContent[] {
  */
 export function groupZapsByKind(zaps: ParsedZap[]): EarningsByKind[] {
   const grouped = new Map<number, { totalSats: number; zapCount: number }>();
-  const totalSats = zaps.reduce((sum, zap) => sum + zap.amount, 0);
+  let totalSats = 0;
 
   zaps.forEach(zap => {
     if (!zap.zappedEvent) return;
+    // Skip zaps whose event was never fetched — they're e-tag stubs that
+    // default to kind 1 and would inflate that bucket (same guard as
+    // groupZapsByContent). Counting only attributed zaps also keeps the
+    // percentages summing to 100.
+    if (!zap.zappedEvent.content && zap.zappedEvent.created_at === 0) return;
 
+    totalSats += zap.amount;
     const kind = zap.zappedEvent.kind;
     const existing = grouped.get(kind) || { totalSats: 0, zapCount: 0 };
     existing.totalSats += zap.amount;
