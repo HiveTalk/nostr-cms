@@ -1,12 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useMemo } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import type { MemberStats } from '@/hooks/useCommunityZapStats';
 import { formatSats } from '@/lib/zaplytics/utils';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useNostr } from '@nostrify/react';
-import { queryWithNip65Fanout, getNip65ReadRelays } from '@/lib/queryRelays';
+import { queryWithNip65Fanout, getNip65ReadRelays, FALLBACK_DISCOVERY_RELAYS } from '@/lib/queryRelays';
 import { NSchema as n } from '@nostrify/nostrify';
 
 interface ContributorNetworkGraphProps {
@@ -260,17 +260,32 @@ export function ContributorNetworkGraph({ members, isLoading }: ContributorNetwo
 function useMemberProfiles(pubkeys: string[]): Map<string, { name?: string; picture?: string }> {
   const { nostr } = useNostr();
   const { config } = useAppContext();
+  const queryClient = useQueryClient();
   const nip65ReadRelays = getNip65ReadRelays(config.relayMetadata);
+  // Match useAuthor's coverage: member profiles may live only on the
+  // well-known discovery relays, not the current user's read set.
+  const profileRelays = [...new Set([...nip65ReadRelays, ...FALLBACK_DISCOVERY_RELAYS])];
 
   const queries = useQueries({
     queries: pubkeys.map((pubkey) => ({
-      queryKey: ['author', pubkey],
+      // Must NOT share 'author' with useAuthor — that hook caches
+      // {event, metadata} under the same key and would poison this
+      // lookup with the wrong shape (member avatars never resolved).
+      queryKey: ['member-profile', pubkey],
       queryFn: async ({ signal }: { signal: AbortSignal }) => {
         if (!pubkey) return null;
+        // Reuse a cached useAuthor result instead of refetching — the
+        // member table already loads the same profiles. Skip it when the
+        // entry was invalidated (e.g. profile edit): getQueryData still
+        // returns the pre-invalidation data while it waits to refetch.
+        const cacheState = queryClient.getQueryState(['author', pubkey]);
+        const cached = cacheState?.isInvalidated ? undefined
+          : queryClient.getQueryData<{ metadata?: { name?: string; display_name?: string; picture?: string } }>(['author', pubkey]);
+        if (cached?.metadata) return cached.metadata;
         let [event] = await queryWithNip65Fanout(
           nostr,
           [{ kinds: [0], authors: [pubkey], limit: 1 }],
-          nip65ReadRelays,
+          profileRelays,
           AbortSignal.any([signal, AbortSignal.timeout(1500)]),
         );
         if (!event) {
